@@ -4,13 +4,8 @@ import { CONFIG } from '../core/Config';
 import { Player } from '../entities/Player';
 
 const PI05 = Math.PI / 2;
-const direction = new Vector3();
 const velocity = new Vector3();
 
-const STEP1 = 'step1';
-const STEP2 = 'step2';
-
-let currentSign = 1;
 let elapsed = 0;
 
 const euler = { x: 0, y: 0, z: 0 };
@@ -30,7 +25,7 @@ class FirstPersonControls extends EventDispatcher {
 	public weaponMovement: number;
 	public input: any;
 	public sounds: Map<string, any>;
-	
+
 	// RIFT-style movement enhancements
 	public isSprinting: boolean;
 	public sprintMultiplier: number;
@@ -64,7 +59,7 @@ class FirstPersonControls extends EventDispatcher {
 		this.brakingPower = CONFIG.CONTROLS.BRAKING_POWER;
 		this.headMovement = CONFIG.CONTROLS.HEAD_MOVEMENT;
 		this.weaponMovement = CONFIG.CONTROLS.WEAPON_MOVEMENT;
-		
+
 		// RIFT-style movement
 		this.isSprinting = false;
 		this.sprintMultiplier = 1.6; // Sprint speed multiplier
@@ -75,7 +70,9 @@ class FirstPersonControls extends EventDispatcher {
 			right: false,
 			left: false,
 			mouseDown: false,
-			sprint: false
+			sprint: false,
+			jump: false,
+			crouch: false
 		};
 
 		this.sounds = new Map();
@@ -173,10 +170,9 @@ class FirstPersonControls extends EventDispatcher {
 		this.input.left = false;
 		this.input.mouseDown = false;
 		this.input.sprint = false;
-		
+
 		this.isSprinting = false;
 
-		currentSign = 1;
 		elapsed = 0;
 		velocity.set(0, 0, 0);
 
@@ -232,35 +228,13 @@ class FirstPersonControls extends EventDispatcher {
 	* @param {Number} delta - The time delta.
 	* @return {FirstPersonControls} A reference to this instance.
 	*/
-	_updateVelocity(delta: number): this {
+	_updateVelocity(_delta: number): this {
 
 		const input = this.input;
-		const owner = this.owner;
-
-		velocity.x -= velocity.x * this.brakingPower * delta;
-		velocity.z -= velocity.z * this.brakingPower * delta;
-
-		direction.z = Number(input.forward) - Number(input.backward);
-		direction.x = Number(input.left) - Number(input.right);
-		direction.normalize();
 
 		// RIFT-style sprint detection
 		const isMovingForward = input.forward && !input.backward;
 		this.isSprinting = input.sprint && isMovingForward;
-		
-		// Apply speed multiplier based on sprint state
-		const speedMultiplier = this.isSprinting ? this.sprintMultiplier : 1.0;
-		const acceleration = CONFIG.CONTROLS.ACCELERATION * speedMultiplier;
-
-		if (input.forward || input.backward) velocity.z -= direction.z * acceleration * delta;
-		if (input.left || input.right) velocity.x -= direction.x * acceleration * delta;
-
-		if (!owner) return this;
-
-		// Update player's maxSpeed to allow sprint velocity
-		owner.maxSpeed = CONFIG.PLAYER.MAX_SPEED * speedMultiplier;
-
-		owner.velocity.copy(velocity).applyRotation(owner.rotation);
 
 		return this;
 
@@ -272,51 +246,8 @@ class FirstPersonControls extends EventDispatcher {
 	* @return {FirstPersonControls} A reference to this instance.
 	*/
 	_updateHead() {
-
-		const owner = this.owner;
-		if (!owner) return this;
-
-		const head = owner.head;
-
-		// some simple head bobbing
-
-		const motion = Math.sin(elapsed * this.headMovement);
-
-		head.position.y = Math.abs(motion) * 0.06;
-		head.position.x = motion * 0.08;
-
-		//
-
-		head.position.y += owner.height;
-
-		//
-
-		const sign = Math.sign(Math.cos(elapsed * this.headMovement));
-
-		if (sign < currentSign) {
-
-			currentSign = sign;
-
-			if (this.owner) {
-				const audio = this.owner.audios.get(STEP1);
-				if (audio) audio.play();
-			}
-
-		}
-
-		if (sign > currentSign) {
-
-			currentSign = sign;
-
-			if (this.owner) {
-				const audio = this.owner.audios.get(STEP2);
-				if (audio) audio.play();
-			}
-
-		}
-
+		// Head bobbing is now handled by the Player entity (Rift physics)
 		return this;
-
 	}
 
 	/**
@@ -348,9 +279,14 @@ function onMouseDown(this: FirstPersonControls, event: any) {
 
 	if (this.active && event.which === 1) {
 		event.preventDefault();
-		
+
+		// Ensure pointer is locked
+		if (document.pointerLockElement !== document.body) {
+			document.body.requestPointerLock();
+		}
+
 		this.input.mouseDown = true;
-		
+
 		// Always fire on first click for all weapons
 		if (this.owner) {
 			this.owner.shoot();
@@ -371,7 +307,7 @@ function onMouseUp(this: FirstPersonControls, event: any) {
 
 function onMouseMove(this: FirstPersonControls, event: any) {
 
-	if (this.active) {
+	if (this.active && document.pointerLockElement === document.body) {
 
 		this.movementX -= event.movementX * 0.001 * this.lookingSpeed;
 		this.movementY -= event.movementY * 0.001 * this.lookingSpeed;
@@ -379,9 +315,10 @@ function onMouseMove(this: FirstPersonControls, event: any) {
 		this.movementY = Math.max(- PI05, Math.min(PI05, this.movementY));
 
 		if (this.owner) {
+			console.log('DEBUG: Mouse Move', this.movementX, this.movementY);
 			this.owner.rotation.fromEuler(0, this.movementX, 0); // yaw
 			this.owner.head.rotation.fromEuler(this.movementY, 0, 0); // pitch
-			
+
 			// Pass mouse movement to World for RIFT weapon system
 			if (this.owner.world && this.owner.world.onMouseMove) {
 				this.owner.world.onMouseMove(event.movementX, event.movementY);
@@ -400,7 +337,8 @@ function onPointerlockChange(this: FirstPersonControls) {
 
 	} else {
 
-		this.disconnect();
+		// Do NOT disconnect, just dispatch unlock so UI can update
+		// this.disconnect(); 
 
 		this.dispatchEvent({ type: 'unlock' });
 
@@ -422,6 +360,7 @@ function onKeyDown(this: FirstPersonControls, event: any) {
 
 			case 38: // up
 			case 87: // w
+				console.log('DEBUG: Forward Key Pressed');
 				this.input.forward = true;
 				break;
 
@@ -442,6 +381,15 @@ function onKeyDown(this: FirstPersonControls, event: any) {
 
 			case 16: // shift (sprint)
 				this.input.sprint = true;
+				break;
+
+			case 32: // space (jump)
+				this.input.jump = true;
+				break;
+
+			case 67: // c (crouch/slide)
+			case 17: // ctrl
+				this.input.crouch = true;
 				break;
 
 			case 82: // r
@@ -512,6 +460,15 @@ function onKeyUp(this: FirstPersonControls, event: any) {
 				this.input.sprint = false;
 				break;
 
+			case 32: // space (jump)
+				this.input.jump = false;
+				break;
+
+			case 67: // c (crouch/slide)
+			case 17: // ctrl
+				this.input.crouch = false;
+				break;
+
 		}
 
 	}
@@ -523,7 +480,7 @@ function onWheel(this: FirstPersonControls, event: WheelEvent) {
 	if (this.active && this.owner && this.owner.world.rift) {
 
 		event.preventDefault();
-		
+
 		const direction = event.deltaY > 0 ? 1 : -1;
 		this.owner.world.rift.weaponSystem.scrollWeapon(direction);
 

@@ -270,7 +270,7 @@ export const WEAPON_CONFIG: WeaponConfig = {
     reloadTime: 2.4,
     automatic: true,
     audio: {
-      fire: BASE_AUDIO_PATH + 'Scar-Fire.mp3',
+      fire: BASE_AUDIO_PATH + 'Scar-Fire-1.mp3',
       reload: BASE_AUDIO_PATH + 'Scar-Reload.mp3',
       tail: BASE_AUDIO_PATH + 'Scar-Tail-Fire.mp3',
     },

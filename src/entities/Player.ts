@@ -2,6 +2,7 @@ import { GameEntity, MovingEntity, Vector3, AABB, MathUtils } from 'yuka';
 import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio, Vector3 as ThreeVector3 } from 'three';
 import { WeaponSystem } from '../core/WeaponSystem';
 import { CONFIG } from '../core/Config';
+import { PLAYER_CONFIG } from '../config/gameConfig';
 import { Projectile } from '../weapons/Projectile';
 import { STATUS_ALIVE, WEAPON_TYPES_BLASTER, WEAPON_TYPES_SHOTGUN, WEAPON_TYPES_ASSAULT_RIFLE, MESSAGE_HIT, MESSAGE_DEAD, STATUS_DYING, STATUS_DEAD } from '../core/Constants';
 import World from '../core/World';
@@ -44,6 +45,29 @@ class Player extends MovingEntity {
 	public name: string;
 	declare public active: boolean;
 
+	// Rift Physics Properties
+	public velocity: Vector3; // Override Yuka velocity with same type but managed differently if needed
+	public onGround: boolean = true;
+	public isSprinting: boolean = false;
+	public isSliding: boolean = false;
+	public slideTimer: number = 0;
+	public slideCooldownTimer: number = 0;
+	public slideDirection: Vector3 = new Vector3();
+	public coyoteTimer: number = 0;
+	public jumpBufferTimer: number = 0;
+	public isJumping: boolean = false;
+	public canCutJump: boolean = false;
+	public prevVelocity: Vector3 = new Vector3();
+	public groundNormal: Vector3 = new Vector3(0, 1, 0);
+	public slopeAngle: number = 0;
+	public maxSlopeAngle: number = Math.PI / 4;
+	public stamina: number = 100;
+	public landingImpact: number = 0;
+	public headBobTime: number = 0;
+
+	// Audio buffers (will be loaded by AudioManager or passed in)
+	public lastFootstepTime: number = 0;
+
 	/**
 	* Constructs a new player object.
 	*
@@ -63,6 +87,9 @@ class Player extends MovingEntity {
 		this.health = CONFIG.PLAYER.MAX_HEALTH;
 		this.maxHealth = CONFIG.PLAYER.MAX_HEALTH;
 		this.isPlayer = true;
+
+		// Initialize Rift Physics
+		this.velocity = new Vector3();
 
 		this.status = STATUS_ALIVE;
 
@@ -85,7 +112,7 @@ class Player extends MovingEntity {
 		// the player uses the weapon system, too
 
 		this.weaponSystem = new WeaponSystem(this);
-		
+
 		// Skip old weapon system initialization for player - RIFT handles all weapons
 		if (!this.isPlayer) {
 			this.weaponSystem.init();
@@ -130,62 +157,306 @@ class Player extends MovingEntity {
 	*/
 	update(delta: number) {
 
+		// Capture Input from Controls
+		const input = this.world.fpsControls.input;
+		console.log('DEBUG: Player Input', JSON.stringify(input));
+		const inputDir = new Vector3();
+		if (input.forward) inputDir.z -= 1;
+		if (input.backward) inputDir.z += 1;
+		if (input.left) inputDir.x -= 1;
+		if (input.right) inputDir.x += 1;
+
+		// Run Physics Simulation
+		this.updatePhysics(
+			delta,
+			inputDir,
+			input.sprint,
+			input.jump,
+			input.crouch,
+			this.world.arenaObjects
+		);
+
+		// Sync Yuka Entity State
+		// Yuka uses 'position' and 'velocity' which we are updating in updatePhysics
+		// But we need to ensure Yuka's internal state is happy
+
+		// Call super.update to handle Yuka specific things (like behaviors if any, though Player usually doesn't have them)
 		super.update(delta);
 
 		this.currentTime += delta;
 
-		// ensure the enemy never leaves the level
-
-		this.stayInLevel();
-
-		//
+		// ensure the enemy never leaves the level (Legacy check, physics handles bounds now but good backup)
+		// this.stayInLevel(); 
 
 		if (this.status === STATUS_ALIVE) {
-
-			// update weapon system (only for enemies, RIFT handles player weapons)
-
 			if (!this.isPlayer) {
 				this.weaponSystem.updateWeaponChange();
 			}
-
-			// update bounds
-
 			this.bounds.copy(this.boundsDefinition).applyMatrix4(this.worldMatrix);
-
 		}
-
-		//
 
 		if (this.status === STATUS_DYING) {
-
 			if (this.currentTime >= this.endTimeDying) {
-
 				this.status = STATUS_DEAD;
 				this.endTimeDying = Infinity;
-
 			}
-
 		}
-
-		//
 
 		if (this.status === STATUS_DEAD) {
-
 			if (this.world.debug) console.log('DIVE.Player: Player died.');
-
 			this.reset();
-
 			this.world.spawningManager.respawnCompetitor(this);
 			this.world.fpsControls.sync();
-
 		}
-
-		//
 
 		this.mixer!.update(delta);
 
 		return this;
 
+	}
+
+	updatePhysics(
+		delta: number,
+		inputDir: Vector3,
+		wantsToSprint: boolean,
+		wantsJump: boolean,
+		wantsCrouch: boolean,
+		arenaObjects: Array<{ mesh: any; box: any }>
+	) {
+
+		this.prevVelocity.copy(this.velocity);
+
+		const hasInput = inputDir.squaredLength() > 0;
+		if (hasInput) {
+			console.log('DEBUG: updatePhysics hasInput', inputDir);
+			inputDir.normalize();
+			// Apply rotation to input
+			inputDir.applyRotation(this.rotation);
+			console.log('DEBUG: inputDir after rotation', inputDir);
+
+			// Slope adjustment
+			if (this.onGround && this.slopeAngle > 0) {
+				// Project inputDir onto the plane defined by groundNormal
+				// Yuka Vector3 doesn't have projectOnPlane, so we do it manually
+				// v - n * (v . n)
+				const dot = inputDir.dot(this.groundNormal);
+				const proj = this.groundNormal.clone().multiplyScalar(dot);
+				inputDir.sub(proj).normalize();
+			}
+		}
+
+		// Slide Cooldown
+		if (this.slideCooldownTimer > 0) {
+			this.slideCooldownTimer -= delta;
+		}
+
+		// Slide Initiation
+		if (wantsCrouch && this.isSprinting && this.onGround && this.slideCooldownTimer <= 0 && !this.isSliding) {
+			this.isSliding = true;
+			this.slideTimer = PLAYER_CONFIG.slideDuration || 1.0;
+			this.slideDirection.copy(this.velocity).normalize();
+			this.velocity.add(this.slideDirection.clone().multiplyScalar(2));
+		}
+
+		// Slide State Management
+		if (this.isSliding) {
+			this.slideTimer -= delta;
+			if (this.slideTimer <= 0 || this.velocity.length() < (PLAYER_CONFIG.walkSpeed || 8) * 0.5) {
+				this.isSliding = false;
+				this.slideCooldownTimer = PLAYER_CONFIG.slideCooldown || 1.0;
+			}
+		}
+
+		// Sprint and stamina
+		this.isSprinting = wantsToSprint && this.onGround && this.stamina > 0 && !this.isSliding;
+		if (this.isSprinting) {
+			this.stamina -= (PLAYER_CONFIG.staminaDrain || 20) * delta;
+			if (this.stamina < 0) {
+				this.stamina = 0;
+				this.isSprinting = false;
+			}
+		} else {
+			this.stamina = Math.min(PLAYER_CONFIG.maxStamina || 100, this.stamina + (PLAYER_CONFIG.staminaRegen || 30) * delta);
+		}
+
+		// Movement
+		let targetSpeed = PLAYER_CONFIG.walkSpeed || 8;
+		if (this.isSprinting) targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
+
+		const isGrounded = this.onGround;
+		// Horizontal velocity
+		const horizVel = new Vector3(this.velocity.x, 0, this.velocity.z);
+
+		if (this.isSliding) {
+			const slideSpeed = (PLAYER_CONFIG.slideSpeed || 18) * (this.slideTimer / (PLAYER_CONFIG.slideDuration || 1.0));
+			const targetSlideVel = new Vector3(this.slideDirection.x, 0, this.slideDirection.z).multiplyScalar(slideSpeed);
+
+			// Lerp horizontal velocity
+			// Yuka Vector3 doesn't have lerp, do manual
+			const alpha = (PLAYER_CONFIG.slideFriction || 2.5) * delta;
+			horizVel.x += (targetSlideVel.x - horizVel.x) * alpha;
+			horizVel.z += (targetSlideVel.z - horizVel.z) * alpha;
+		} else {
+			const accel = isGrounded ? (PLAYER_CONFIG.groundAccel || 50) : (PLAYER_CONFIG.airAccel || 20);
+			const decel = isGrounded ? (PLAYER_CONFIG.groundDecel || 30) : (PLAYER_CONFIG.airDecel || 5);
+
+			if (hasInput) {
+				const targetVel = new Vector3(inputDir.x, 0, inputDir.z).multiplyScalar(targetSpeed);
+				const alpha = accel * delta;
+				// Simple lerp approximation for accel
+				const diff = new Vector3().copy(targetVel).sub(horizVel);
+				if (diff.length() > alpha) {
+					diff.normalize().multiplyScalar(alpha);
+				}
+				horizVel.add(diff);
+				console.log('DEBUG: TargetVel', targetVel, 'HorizVel', horizVel, 'Delta', delta);
+			} else {
+				const decayFactor = Math.exp(-decel * delta);
+				horizVel.multiplyScalar(decayFactor);
+			}
+		}
+
+		this.velocity.x = horizVel.x;
+		this.velocity.z = horizVel.z;
+
+		// Head bob
+		const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+		this.headBobTime += delta * speed * 2;
+
+		// Apply head bob to camera (head entity)
+		if (this.head) {
+			const motion = Math.sin(this.headBobTime);
+			this.head.position.y = Math.abs(motion) * 0.06;
+			this.head.position.x = motion * 0.08;
+		}
+
+		// Jump
+		if (this.onGround) {
+			this.coyoteTimer = PLAYER_CONFIG.coyoteTime || 0.15;
+			this.isJumping = false;
+		} else {
+			this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
+		}
+
+		this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
+		if (wantsJump) this.jumpBufferTimer = 0.1; // Set buffer
+
+		const canJump = this.coyoteTimer > 0 || this.onGround;
+		if (canJump && this.jumpBufferTimer > 0) {
+			this.velocity.y = PLAYER_CONFIG.jumpForce || 12;
+			this.isJumping = true;
+			this.canCutJump = true;
+			this.coyoteTimer = 0;
+			this.jumpBufferTimer = 0;
+
+			if (this.isSliding) {
+				this.isSliding = false;
+				this.slideCooldownTimer = PLAYER_CONFIG.slideCooldown || 1.0;
+			}
+
+			// Play jump sound
+			const audio = this.audios.get('jump'); // Assuming 'jump' audio exists or we map it
+			if (audio && !audio.isPlaying) audio.play();
+		}
+
+		if (this.canCutJump && !wantsJump && this.velocity.y > 0) {
+			this.velocity.y *= (PLAYER_CONFIG.jumpCutMultiplier || 0.5);
+			this.canCutJump = false;
+		}
+
+		// Gravity
+		this.velocity.y -= (PLAYER_CONFIG.gravity || 35) * delta;
+
+		// Move
+		console.log('DEBUG: Pre-Integration Position', this.position, 'Velocity', this.velocity);
+		const moveStep = this.velocity.clone().multiplyScalar(delta);
+		const newPos = this.position.clone().add(moveStep);
+
+		// Collision
+		const playerRadius = this.boundingRadius;
+		const stepHeight = PLAYER_CONFIG.stepHeight || 0.5;
+		this.onGround = false;
+
+		this.checkSlope(arenaObjects);
+
+		// Simple box collision against arena objects
+		// Note: Yuka uses a specific coordinate system, ensure compatibility
+		for (const obj of arenaObjects) {
+			// Convert Yuka vector to Three vector for Box3 check if needed, 
+			// but here we can just do simple AABB check if boxes are axis aligned
+			// obj.box is a THREE.Box3
+
+			const minX = newPos.x - playerRadius;
+			const maxX = newPos.x + playerRadius;
+			const minY = newPos.y; // Pivot at feet? Yuka MovingEntity usually pivot at center? 
+			// Drift Player constructor says: boundsDefinition = new AABB(new Vector3(- 0.25, 0, - 0.25), new Vector3(0.25, 1.8, 0.25));
+			// So pivot is at bottom (0).
+			const maxY = newPos.y + this.height;
+			const minZ = newPos.z - playerRadius;
+			const maxZ = newPos.z + playerRadius;
+
+			const box = obj.box; // THREE.Box3
+
+			// Check intersection
+			if (maxX > box.min.x && minX < box.max.x &&
+				maxY > box.min.y && minY < box.max.y &&
+				maxZ > box.min.z && minZ < box.max.z) {
+
+				// Resolve collision
+				console.log('DEBUG: Collision Detected with', obj);
+				// Simplified resolution: push out of shallowest penetration
+				const overlapX = Math.min(maxX - box.min.x, box.max.x - minX);
+				const overlapY = Math.min(maxY - box.min.y, box.max.y - minY);
+				const overlapZ = Math.min(maxZ - box.min.z, box.max.z - minZ);
+
+				if (overlapY < overlapX && overlapY < overlapZ) {
+					// Vertical collision
+					if (this.velocity.y < 0 && newPos.y > box.min.y) {
+						// Landing
+						newPos.y += overlapY;
+						this.velocity.y = 0;
+						this.onGround = true;
+					} else if (this.velocity.y > 0 && newPos.y < box.max.y) {
+						// Ceiling
+						newPos.y -= overlapY;
+						this.velocity.y = 0;
+					}
+				} else if (overlapX < overlapZ) {
+					// X collision
+					if (newPos.x < box.getCenter(new ThreeVector3()).x) {
+						newPos.x -= overlapX;
+					} else {
+						newPos.x += overlapX;
+					}
+					this.velocity.x = 0;
+				} else {
+					// Z collision
+					if (newPos.z < box.getCenter(new ThreeVector3()).z) {
+						newPos.z -= overlapZ;
+					} else {
+						newPos.z += overlapZ;
+					}
+					this.velocity.z = 0;
+				}
+			}
+		}
+
+		// Ground check fallback (if no arena objects or floor is y=0)
+		if (newPos.y <= 0) {
+			newPos.y = 0;
+			this.velocity.y = 0;
+			this.onGround = true;
+		}
+
+		this.position.copy(newPos);
+		console.log('DEBUG: Post-Integration Position', this.position);
+	}
+
+	checkSlope(arenaObjects: any[]) {
+		// Simplified slope check
+		this.slopeAngle = 0;
+		this.groundNormal.set(0, 1, 0);
+		// Raycast down would be better, but for now assume flat or handle via collision
 	}
 
 	/**
@@ -209,6 +480,13 @@ class Player extends MovingEntity {
 
 		return this;
 
+	}
+
+	/**
+	* Alias for reset, required by GameModeManager
+	*/
+	respawn() {
+		this.reset();
 	}
 
 	/**
@@ -253,11 +531,11 @@ class Player extends MovingEntity {
 			const velocity = new ThreeVector3(this.velocity.x, this.velocity.y, this.velocity.z);
 
 			const result = world.rift.weaponSystem.shoot(camera, onGround, isSprinting, velocity);
-			
+
 			if (result.shotFired) {
 				// Shoot was successful - hit detection and damage handled elsewhere
 			}
-			
+
 			return this;
 		}
 

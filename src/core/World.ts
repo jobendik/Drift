@@ -1,5 +1,5 @@
 import { EntityManager, Time, MeshGeometry, Vector3, CellSpacePartitioning } from 'yuka';
-import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3 } from 'three';
+import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3, Mesh, Box3 } from 'three';
 import { HemisphereLight, DirectionalLight } from 'three';
 import { AxesHelper } from 'three';
 
@@ -41,7 +41,7 @@ class World {
 	public lobbyUI!: LobbyUI;
 
 	// Physics collision objects
-	public arenaObjects: Array<{ mesh: THREE.Mesh; box: THREE.Box3 }> = [];
+	public arenaObjects: Array<{ mesh: Mesh; box: Box3 }> = [];
 
 	// Mouse tracking for weapon system
 	private mouseMovement: { x: number; y: number } = { x: 0, y: 0 };
@@ -337,6 +337,7 @@ class World {
 		this.camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
 		this.camera.position.set(0, 75, 100);
 		this.camera.add(this.assetManager.listener);
+		this.scene.add(this.camera); // Fix: Add camera to scene so its children (weapons) are rendered
 
 		// helpers
 
@@ -493,8 +494,8 @@ class World {
 
 		// Populate arenaObjects for physics collision
 		this.arenaObjects = [];
-		const box = new THREE.Box3().setFromObject(mesh);
-		this.arenaObjects.push({ mesh: mesh as THREE.Mesh, box: box });
+		// const box = new Box3().setFromObject(mesh);
+		// this.arenaObjects.push({ mesh: mesh as Mesh, box: box });
 
 		// navigation mesh
 
@@ -635,12 +636,18 @@ class World {
 		this.fpsControls = new FirstPersonControls(this.player);
 		this.fpsControls.sync();
 
+		// Attach camera immediately so we see the world even before locking
+		this.camera.matrixAutoUpdate = false;
+		this.player.activate();
+		this.player.head.setRenderComponent(this.camera, syncCamera);
+
+		// Show RIFT HUD immediately
+		if (this.rift) {
+			this.rift.hudManager.show();
+			console.log('RIFT HUD shown');
+		}
+
 		this.fpsControls.addEventListener('lock', () => {
-
-			this.camera.matrixAutoUpdate = false;
-
-			this.player.activate();
-			this.player.head.setRenderComponent(this.camera, syncCamera);
 
 			// Hide old Drift UI
 			const oldAmmo = document.getElementById('hudAmmo');
@@ -650,34 +657,27 @@ class World {
 			if (oldHealth) oldHealth.style.display = 'none';
 			if (oldFragList) oldFragList.style.display = 'none';
 
-			// Show RIFT HUD
-			if (this.rift) {
-				this.rift.hudManager.show();
-				console.log('RIFT HUD shown');
-			}
-
 		});
 
 		this.fpsControls.addEventListener('unlock', () => {
 
-			this.camera.matrixAutoUpdate = true;
-
-			this.player.deactivate();
-			(this.player.head as any).setRenderComponent(null, null);
+			// Optional: Detach camera on unlock? 
+			// For now, let's keep it attached so the view doesn't jump to the sky
+			// this.camera.matrixAutoUpdate = true;
+			// this.player.deactivate();
+			// (this.player.head as any).setRenderComponent(null, null);
 
 			this.uiManager.hideFPSInterface();
 
 			// Hide RIFT HUD
-			if (this.rift) {
-				this.rift.hudManager.hide();
-			}
+			// if (this.rift) {
+			// 	this.rift.hudManager.hide();
+			// }
 
 		});
 
-		// Auto-lock controls to start in first-person mode
-		setTimeout(() => {
-			this.fpsControls.connect();
-		}, 100);
+		// Connect controls (adds listeners)
+		this.fpsControls.connect();
 
 		return this;
 
@@ -708,13 +708,13 @@ class World {
 	_initRIFT() {
 
 		// Initialize main RIFT integration (particles, weapons, decals, tracers, HUD, audio)
-		this.rift = new RIFTIntegration(this.scene, this.camera);
+		this.rift = new RIFTIntegration(this.scene, this.camera, this.assetManager.listener, this.assetManager);
 
 		// Initialize Game Mode Manager
-		this.gameModeManager = new GameModeManager(this);
+		this.gameModeManager = new GameModeManager(this, this.rift.hudManager);
 
 		// Initialize Network Manager for multiplayer
-		this.networkManager = new NetworkManager();
+		this.networkManager = new NetworkManager(this.scene);
 
 		// Initialize Lobby Manager
 		this.lobbyManager = new LobbyManager();
@@ -727,6 +727,9 @@ class World {
 		this.rift.weaponSystem.setShellEjectCallback((pos, dir) => {
 			this.rift.particleSystem.spawnShellCasing(pos, dir);
 		});
+
+		// Equip default weapon (AK47)
+		this.rift.weaponSystem.switchWeapon(0);
 
 		console.log('RIFT Integration initialized successfully');
 
@@ -804,7 +807,6 @@ class World {
 
 		const gameMode = modeMap[modeId] || GameModeType.FREE_FOR_ALL;
 		this.gameModeManager.setMode(gameMode);
-		this.gameModeManager.start();
 	}
 
 	/**
@@ -812,12 +814,12 @@ class World {
 	* Call this when player shoots to create tracers, impacts, and decals.
 	*/
 	public handleRiftShot(hitPoint: Vector3 | null, hitNormal: Vector3 | null, hitEntity: any): void {
-		const muzzlePos = this.rift.weaponSystem.getMuzzlePosition();
+		const muzzlePos = this.rift.weaponSystem.getMuzzleWorldPosition();
 
 		if (hitPoint) {
 			// Convert Yuka Vector3 to Three.js Vector3
 			const threeHitPoint = new ThreeVector3(hitPoint.x, hitPoint.y, hitPoint.z);
-			this.rift.createBulletTracer(muzzlePos, threeHitPoint);
+			this.rift.tracerSystem.createTracer(muzzlePos, threeHitPoint);
 
 			// Create impact effects
 			if (hitNormal) {
@@ -825,12 +827,13 @@ class World {
 
 				if (hitEntity instanceof Enemy) {
 					// Enemy hit - blood particles
-					this.rift.spawnImpact(threeHitPoint, threeNormal, 'flesh', true);
-					this.rift.showHit(hitEntity.health <= 0, false);
+					this.rift.particleSystem.spawnImpactEffect(threeHitPoint, false);
+					this.rift.hudManager.showHitmarker(hitEntity.health <= 0);
 				} else {
 					// Environment hit - bullet hole and sparks
-					this.rift.createBulletHole(threeHitPoint, threeNormal, SurfaceMaterial.CONCRETE);
-					this.rift.spawnImpact(threeHitPoint, threeNormal, 'concrete', false);
+					this.rift.decalSystem.createDecal(threeHitPoint, threeNormal, SurfaceMaterial.ROCK);
+					this.rift.particleSystem.spawnMaterialImpact(threeHitPoint, threeNormal, SurfaceMaterial.ROCK);
+					this.rift.impactSystem.playSurfaceImpact(threeHitPoint, SurfaceMaterial.ROCK);
 				}
 			}
 		}
@@ -875,7 +878,22 @@ class World {
 
 		this.spawningManager.update(delta);
 
+		// Debug Entity Manager
+		console.log('DEBUG: Entities count:', this.entityManager.entities.length);
+		const playerEntity = this.entityManager.entities.find(e => e === this.player);
+		if (playerEntity) {
+			console.log('DEBUG: Player in EntityManager. Active:', playerEntity.active);
+		} else {
+			console.log('DEBUG: Player NOT in EntityManager');
+		}
+
 		this.entityManager.update(delta);
+
+		// Sync render components (visuals) with entity logic
+		// This is crucial for Player.head -> Camera sync
+		for (const entity of this.entityManager.entities) {
+			this._syncRenderComponent(entity);
+		}
 
 		this.pathPlanner.update();
 
@@ -950,6 +968,30 @@ class World {
 	public onMouseMove(movementX: number, movementY: number): void {
 		this.mouseMovement.x = movementX;
 		this.mouseMovement.y = movementY;
+	}
+
+	/**
+	 * Recursively syncs the render component of an entity and its children.
+	 * 
+	 * @param {GameEntity} entity - The entity to sync.
+	 */
+	private _syncRenderComponent(entity: any): void {
+		if (entity.renderComponent) {
+			// If a custom callback is defined (like for Camera), use it
+			if (entity._renderComponentCallback) {
+				entity._renderComponentCallback(entity, entity.renderComponent);
+			} else {
+				// Default sync: copy world matrix
+				entity.renderComponent.matrix.copy(entity.worldMatrix);
+			}
+		}
+
+		// Recursively sync children (e.g. Player -> Head -> Camera)
+		if (entity.children) {
+			for (const child of entity.children) {
+				this._syncRenderComponent(child);
+			}
+		}
 	}
 
 }

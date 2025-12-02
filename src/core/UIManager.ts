@@ -108,15 +108,15 @@ class UIManager {
 	*/
 	init(): this {
 
-	this._buildFPSInterface();
+		this._buildFPSInterface();
 
-	//
+		//
 
-	const world = this.world;
+		const world = this.world;
 
-	if (world.debug === true) {
+		if (world.debug === true) {
 
-		const gui = new DAT.GUI({ width: 300 });
+			const gui = new DAT.GUI({ width: 300 });
 			const params = this.debugParameter;
 
 			// nav mesh folder
@@ -516,8 +516,10 @@ class UIManager {
 		const player = this.world.player;
 		const weapon = player.weaponSystem.currentWeapon;
 
-		this.html.roundsLeft.textContent = weapon.roundsLeft;
-		this.html.ammo.textContent = weapon.ammo;
+		if (weapon) {
+			this.html.roundsLeft.textContent = weapon.roundsLeft;
+			this.html.ammo.textContent = weapon.ammo;
+		}
 
 		return this;
 

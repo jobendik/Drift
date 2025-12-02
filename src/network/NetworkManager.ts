@@ -2,9 +2,9 @@
 // Handles multiplayer networking via Socket.IO
 
 import * as THREE from 'three';
-import { 
-  NetworkConfig, 
-  DEFAULT_NETWORK_CONFIG, 
+import {
+  NetworkConfig,
+  DEFAULT_NETWORK_CONFIG,
   NetworkMatchState,
 } from './types';
 import { RemotePlayer } from './RemotePlayer';
@@ -17,7 +17,7 @@ interface Socket {
   off: (event: string, callback?: (...args: unknown[]) => void) => void;
 }
 
-type IoFunction = (url: string, options: unknown) => Socket;
+type IoFunction = (url: string, options?: any) => Socket;
 
 /**
  * Network Manager - Handles all multiplayer networking
@@ -67,7 +67,7 @@ export class NetworkManager {
   /**
    * Initialize network connection
    */
-  public async connect(token: string, matchId: string = 'default_match'): Promise<boolean> {
+  public async connect(serverUrl: string, token: string, matchId: string = 'default_match'): Promise<boolean> {
     if (this.socket?.connected) {
       console.log('Already connected');
       return true;
@@ -79,7 +79,7 @@ export class NetworkManager {
     try {
       // Dynamically import socket.io-client
       // @ts-ignore - socket.io-client is an optional dependency
-      const socketIo = await import('socket.io-client');
+      const socketIo: any = await import('socket.io-client');
       this.io = socketIo.io || socketIo.default?.io;
 
       if (!this.io) {
@@ -87,8 +87,8 @@ export class NetworkManager {
       }
 
       console.log('Connecting to game server...');
-      
-      this.socket = this.io(this.config.serverUrl, {
+
+      this.socket = this.io(serverUrl, {
         auth: { token },
         transports: ['websocket'],
       });
@@ -212,7 +212,7 @@ export class NetworkManager {
     this.socket.on('player_respawned', (data: unknown) => {
       const { userId, team } = data as { userId: string; team?: string };
       const userIdStr = String(userId);
-      
+
       console.log(`Player ${userIdStr} respawned (${team || 'no team'})`);
 
       if (team) {
@@ -251,7 +251,7 @@ export class NetworkManager {
     this.socket.on('score_update', (state: unknown) => {
       console.log('Score update:', state);
       this.matchState = state as NetworkMatchState;
-      
+
       if (this.onScoreUpdateCallback) {
         this.onScoreUpdateCallback(this.matchState);
       }
@@ -260,7 +260,7 @@ export class NetworkManager {
     this.socket.on('match_ended', (state: unknown) => {
       console.log('Match ended:', state);
       this.matchState = state as NetworkMatchState;
-      
+
       if (this.onMatchEndCallback) {
         this.onMatchEndCallback(this.matchState);
       }
@@ -441,7 +441,7 @@ export class NetworkManager {
       this.socket.off('match_state');
       this.socket.off('score_update');
       this.socket.off('match_ended');
-      
+
       this.socket.emit('disconnect');
       this.socket = null;
     }
