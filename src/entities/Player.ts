@@ -1,9 +1,9 @@
 import { GameEntity, MovingEntity, Vector3, AABB, MathUtils } from 'yuka';
-import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio } from 'three';
+import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio, Vector3 as ThreeVector3 } from 'three';
 import { WeaponSystem } from '../core/WeaponSystem';
 import { CONFIG } from '../core/Config';
 import { Projectile } from '../weapons/Projectile';
-import { STATUS_ALIVE, WEAPON_TYPES_ASSAULT_RIFLE, MESSAGE_HIT, MESSAGE_DEAD, STATUS_DYING, STATUS_DEAD } from '../core/Constants';
+import { STATUS_ALIVE, WEAPON_TYPES_BLASTER, WEAPON_TYPES_SHOTGUN, WEAPON_TYPES_ASSAULT_RIFLE, MESSAGE_HIT, MESSAGE_DEAD, STATUS_DYING, STATUS_DEAD } from '../core/Constants';
 import World from '../core/World';
 
 const intersectionPoint = new Vector3();
@@ -85,7 +85,11 @@ class Player extends MovingEntity {
 		// the player uses the weapon system, too
 
 		this.weaponSystem = new WeaponSystem(this);
-		this.weaponSystem.init();
+		
+		// Skip old weapon system initialization for player - RIFT handles all weapons
+		if (!this.isPlayer) {
+			this.weaponSystem.init();
+		}
 
 		// the player's bounds (using a single AABB is sufficient for now)
 
@@ -138,9 +142,11 @@ class Player extends MovingEntity {
 
 		if (this.status === STATUS_ALIVE) {
 
-			// update weapon system
+			// update weapon system (only for enemies, RIFT handles player weapons)
 
-			this.weaponSystem.updateWeaponChange();
+			if (!this.isPlayer) {
+				this.weaponSystem.updateWeaponChange();
+			}
 
 			// update bounds
 
@@ -239,29 +245,33 @@ class Player extends MovingEntity {
 		const head = this.head;
 		const world = this.world;
 
-		// simulate a shot in order to retrieve the closest intersection point
+		// Use RIFT weapon system if available
+		if (world.rift && world.rift.weaponSystem) {
+			const camera = world.camera;
+			const onGround = this.velocity.y === 0;
+			const isSprinting = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2) > 10;
+			const velocity = new ThreeVector3(this.velocity.x, this.velocity.y, this.velocity.z);
 
+			const result = world.rift.weaponSystem.shoot(camera, onGround, isSprinting, velocity);
+			
+			if (result.shotFired) {
+				// Shoot was successful - hit detection and damage handled elsewhere
+			}
+			
+			return this;
+		}
+
+		// Fallback to old system if RIFT not available
 		const ray = projectile.ray;
-
 		head.getWorldPosition(ray.origin);
 		head.getWorldDirection(ray.direction);
-
 		projectile.owner = this;
 
 		const result = world.checkProjectileIntersection(projectile, intersectionPoint);
-
-		// now calculate the distance to the closest intersection point. if no point was found,
-		// choose a point on the ray far away from the origin
-
 		const distance = (result === null) ? 1000 : ray.origin.distanceTo(intersectionPoint);
 		targetPosition.copy(ray.origin).add(ray.direction.multiplyScalar(distance));
 
-		// fire
-
 		this.weaponSystem.shoot(targetPosition);
-
-		// update UI
-
 		world.uiManager.updateAmmoStatus();
 
 		return this;
@@ -275,7 +285,12 @@ class Player extends MovingEntity {
 	*/
 	reload() {
 
-		this.weaponSystem.reload();
+		// Use RIFT weapon system if available
+		if (this.world.rift && this.world.rift.weaponSystem) {
+			this.world.rift.weaponSystem.reload();
+		} else {
+			this.weaponSystem.reload();
+		}
 
 		return this;
 
@@ -289,7 +304,19 @@ class Player extends MovingEntity {
 	*/
 	changeWeapon(type: number) {
 
-		this.weaponSystem.setNextWeapon(type);
+		// Use RIFT weapon system if available
+		if (this.world.rift && this.world.rift.weaponSystem) {
+			// Map old weapon types to RIFT weapon indices (0-8)
+			const weaponMap: { [key: number]: number } = {
+				[WEAPON_TYPES_BLASTER]: 4, // Pistol
+				[WEAPON_TYPES_SHOTGUN]: 6, // Shotgun
+				[WEAPON_TYPES_ASSAULT_RIFLE]: 0, // AK47
+			};
+			const weaponIndex = weaponMap[type] !== undefined ? weaponMap[type] : 0;
+			this.world.rift.weaponSystem.switchWeapon(weaponIndex);
+		} else {
+			this.weaponSystem.setNextWeapon(type);
+		}
 
 		return this;
 

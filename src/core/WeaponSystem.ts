@@ -244,7 +244,8 @@ class WeaponSystem {
 				switch (weapon.type) {
 
 					case WEAPON_TYPES_BLASTER:
-						this.renderComponents.blaster.mesh.visible = true;
+						// Keep old weapons hidden - RIFT handles rendering
+						this.renderComponents.blaster.mesh.visible = false;
 						this.renderComponents.shotgun.mesh.visible = false;
 						this.renderComponents.assaultRifle.mesh.visible = false;
 						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.blaster.mesh, sync);
@@ -252,7 +253,7 @@ class WeaponSystem {
 
 					case WEAPON_TYPES_SHOTGUN:
 						this.renderComponents.blaster.mesh.visible = false;
-						this.renderComponents.shotgun.mesh.visible = true;
+						this.renderComponents.shotgun.mesh.visible = false;
 						this.renderComponents.assaultRifle.mesh.visible = false;
 						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.shotgun.mesh, sync);
 						break;
@@ -260,7 +261,7 @@ class WeaponSystem {
 					case WEAPON_TYPES_ASSAULT_RIFLE:
 						this.renderComponents.blaster.mesh.visible = false;
 						this.renderComponents.shotgun.mesh.visible = false;
-						this.renderComponents.assaultRifle.mesh.visible = true;
+						this.renderComponents.assaultRifle.mesh.visible = false;
 						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.assaultRifle.mesh, sync);
 						break;
 
@@ -789,6 +790,11 @@ _initBlasterRenderComponent() {
 			this.renderComponents.blaster.audios.set('reload', reload);
 			this.renderComponents.blaster.muzzle = muzzleSprite;
 
+			// Hide for player (RIFT handles rendering)
+			if (this.owner.isPlayer) {
+				blasterMesh.visible = false;
+			}
+
 			return this;
 
 		}
@@ -860,6 +866,11 @@ _initShotgunRenderComponent() {
 			this.renderComponents.shotgun.audios.set('shot_reload', shotReload);
 			this.renderComponents.shotgun.muzzle = muzzleSprite;
 
+			// Hide for player (RIFT handles rendering)
+			if (this.owner.isPlayer) {
+				shotgunMesh.visible = false;
+			}
+
 			return this;
 
 		}
@@ -926,6 +937,11 @@ _initAssaultRifleRenderComponent() {
 			this.renderComponents.assaultRifle.audios.set('shot', shot);
 			this.renderComponents.assaultRifle.audios.set('reload', reload);
 			this.renderComponents.assaultRifle.muzzle = muzzleSprite;
+
+			// Hide for player (RIFT handles rendering)
+			if (this.owner.isPlayer) {
+				assaultRifleMesh.visible = false;
+			}
 
 			return this;
 

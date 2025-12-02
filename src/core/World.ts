@@ -1,8 +1,7 @@
 import { EntityManager, Time, MeshGeometry, Vector3, CellSpacePartitioning } from 'yuka';
-import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial } from 'three';
+import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3 } from 'three';
 import { HemisphereLight, DirectionalLight } from 'three';
 import { AxesHelper } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { AssetManager } from './AssetManager';
 import { SpawningManager } from './SpawningManager';
@@ -18,6 +17,13 @@ import { PathPlanner } from '../etc/PathPlanner';
 import { Sky } from '../effects/Sky';
 import { CONFIG } from './Config';
 
+// RIFT Integration imports
+import { RIFTIntegration } from '../rift-integration';
+import { GameModeManager, GameModeType } from '../gamemodes';
+import { NetworkManager } from '../network';
+import { LobbyManager, LobbyUI, LobbyEventType } from '../lobby';
+import { SurfaceMaterial } from '../systems/DecalSystem';
+
 const currentIntersectionPoint = new Vector3();
 
 /**
@@ -26,6 +32,17 @@ const currentIntersectionPoint = new Vector3();
 *
 */
 class World {
+
+	// RIFT Integration systems
+	public rift!: RIFTIntegration;
+	public gameModeManager!: GameModeManager;
+	public networkManager!: NetworkManager;
+	public lobbyManager!: LobbyManager;
+	public lobbyUI!: LobbyUI;
+
+	// Mouse tracking for weapon system
+	private mouseMovement: { x: number; y: number } = { x: 0, y: 0 };
+	private headBobTime: number = 0;
 
 
 
@@ -44,7 +61,6 @@ class World {
 	public camera!: PerspectiveCamera;
 	public scene!: Scene;
 	public fpsControls!: FirstPersonControls;
-	public orbitControls!: OrbitControls;
 	public useFPSControls: boolean;
 
 	public player!: Player;
@@ -75,20 +91,18 @@ class World {
 		this.time = new Time();
 		this.tick = 0;
 
-		this.spawningManager = new SpawningManager(this);
-		this.uiManager = new UIManager(this);
+	this.spawningManager = new SpawningManager(this);
+	this.uiManager = new UIManager(this);
 
-		this.useFPSControls = false;
+	this.useFPSControls = true;
 
-		this.enemyCount = CONFIG.BOT.COUNT;
-		this.competitors = new Array();
+	this.enemyCount = CONFIG.BOT.COUNT;
+	this.competitors = new Array();
 
-		this._animate = this.animate.bind(this);
-		this._onWindowResize = this.onWindowResize.bind(this);
+	this._animate = this.animate.bind(this);
+	this._onWindowResize = this.onWindowResize.bind(this);
 
-		this.debug = true;
-
-		this.helpers = {
+	this.debug = false;		this.helpers = {
 			convexRegionHelper: null,
 			spatialIndexHelper: null,
 			axesHelper: null,
@@ -366,6 +380,9 @@ class World {
 
 		window.addEventListener('resize', this._onWindowResize, false);
 
+		// Initialize RIFT Integration systems
+		this._initRIFT();
+
 		return this;
 
 	}
@@ -610,29 +627,29 @@ class World {
 
 		this.fpsControls.addEventListener('lock', () => {
 
-			this.useFPSControls = true;
-
-			this.orbitControls.enabled = false;
 			this.camera.matrixAutoUpdate = false;
 
 			this.player.activate();
 			this.player.head.setRenderComponent(this.camera, syncCamera);
 
-			this.uiManager.showFPSInterface();
+			// Hide old Drift UI
+			const oldAmmo = document.getElementById('hudAmmo');
+			const oldHealth = document.getElementById('hudHealth');
+			const oldFragList = document.getElementById('hudFragList');
+			if (oldAmmo) oldAmmo.style.display = 'none';
+			if (oldHealth) oldHealth.style.display = 'none';
+			if (oldFragList) oldFragList.style.display = 'none';
 
-			if (this.debug) {
-
-				this.uiManager.closeDebugUI();
-
+			// Show RIFT HUD
+			if (this.rift) {
+				this.rift.hudManager.show();
+				console.log('RIFT HUD shown');
 			}
 
 		});
 
 		this.fpsControls.addEventListener('unlock', () => {
 
-			this.useFPSControls = false;
-
-			this.orbitControls.enabled = true;
 			this.camera.matrixAutoUpdate = true;
 
 			this.player.deactivate();
@@ -640,28 +657,21 @@ class World {
 
 			this.uiManager.hideFPSInterface();
 
-			if (this.debug) {
-
-				this.uiManager.openDebugUI();
-
+			// Hide RIFT HUD
+			if (this.rift) {
+				this.rift.hudManager.hide();
 			}
 
-		});
+	});
 
-		//
+	// Auto-lock controls to start in first-person mode
+	setTimeout(() => {
+		this.fpsControls.connect();
+	}, 100);
 
-		if (this.debug) {
+	return this;
 
-			this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
-			this.orbitControls.maxDistance = 500;
-
-		}
-
-		return this;
-
-	}
-
-	/**
+}	/**
 	* Inits the user interface.
 	*
 	* @return {World} A reference to this world object.
@@ -670,8 +680,150 @@ class World {
 
 		this.uiManager.init();
 
+		// Show RIFT HUD
+		if (this.rift) {
+			this.rift.hudManager.show();
+		}
+
 		return this;
 
+	}
+
+	/**
+	* Initializes the RIFT integration systems.
+	* This includes weapon effects, HUD, audio, game modes, network, and lobby.
+	*
+	* @return {World} A reference to this world object.
+	*/
+	_initRIFT() {
+
+		// Initialize main RIFT integration (particles, weapons, decals, tracers, HUD, audio)
+		this.rift = new RIFTIntegration(this.scene, this.camera);
+
+		// Initialize Game Mode Manager
+		this.gameModeManager = new GameModeManager(this);
+		
+		// Initialize Network Manager for multiplayer
+		this.networkManager = new NetworkManager();
+
+		// Initialize Lobby Manager
+		this.lobbyManager = new LobbyManager();
+		this.lobbyUI = new LobbyUI(this.lobbyManager);
+
+		// Setup lobby event handlers
+		this._setupLobbyEvents();
+
+		// Setup shell ejection callback for weapon system
+		this.rift.weaponSystem.setShellEjectCallback((pos, dir) => {
+			this.rift.particleSystem.spawnShellCasing(pos, dir);
+		});
+
+		console.log('RIFT Integration initialized successfully');
+		
+		// Remove any old Drift weapon meshes from the scene
+		const oldWeaponNames = ['blaster_high', 'shotgun_high', 'assaultRifle_high'];
+		const meshesToRemove: any[] = [];
+		
+		this.scene.traverse((object: any) => {
+			if (object.isMesh && oldWeaponNames.some(name => object.name?.includes(name))) {
+				meshesToRemove.push(object);
+			}
+			// Also check parent objects that might be the weapon groups
+			if (object.isGroup && object.children.length > 0) {
+				const hasWeaponMesh = object.children.some((child: any) => 
+					child.isMesh && oldWeaponNames.some(name => child.name?.includes(name))
+				);
+				if (hasWeaponMesh) {
+					meshesToRemove.push(object);
+				}
+			}
+		});
+		
+		meshesToRemove.forEach(mesh => {
+			this.scene.remove(mesh);
+			console.log('Removed old Drift weapon from scene:', mesh.name || mesh.type);
+		});
+		
+		console.log(`Removed ${meshesToRemove.length} old weapon meshes from scene`);
+
+		return this;
+
+	}
+
+	/**
+	* Sets up event handlers for the lobby system.
+	*/
+	private _setupLobbyEvents(): void {
+		// Handle match found
+		this.lobbyManager.on(LobbyEventType.MATCH_FOUND, (data) => {
+			console.log('Match found!', data);
+		});
+
+		// Handle match starting
+		this.lobbyManager.on(LobbyEventType.MATCH_STARTING, async (data: unknown) => {
+			const matchData = data as { serverUrl: string; token: string; matchId: string; modeId: string };
+			
+			// Connect to game server
+			const connected = await this.networkManager.connect(
+				matchData.serverUrl,
+				matchData.token,
+				matchData.matchId
+			);
+			
+			if (connected) {
+				this.lobbyUI.hide();
+				this._startMultiplayerGame(matchData.modeId);
+			}
+		});
+
+		// Handle queue updates
+		this.lobbyManager.on(LobbyEventType.QUEUE_UPDATE, (status) => {
+			console.log('Queue update:', status);
+		});
+	}
+
+	/**
+	* Starts a multiplayer game with the specified mode.
+	*/
+	private _startMultiplayerGame(modeId: string): void {
+		const modeMap: { [key: string]: GameModeType } = {
+			'ffa': GameModeType.FREE_FOR_ALL,
+			'tdm': GameModeType.TEAM_DEATHMATCH,
+			'wave': GameModeType.WAVE_SURVIVAL
+		};
+		
+		const gameMode = modeMap[modeId] || GameModeType.FREE_FOR_ALL;
+		this.gameModeManager.setMode(gameMode);
+		this.gameModeManager.start();
+	}
+
+	/**
+	* Handles RIFT weapon shooting with visual effects.
+	* Call this when player shoots to create tracers, impacts, and decals.
+	*/
+	public handleRiftShot(hitPoint: Vector3 | null, hitNormal: Vector3 | null, hitEntity: any): void {
+		const muzzlePos = this.rift.weaponSystem.getMuzzlePosition();
+		
+		if (hitPoint) {
+			// Convert Yuka Vector3 to Three.js Vector3
+			const threeHitPoint = new ThreeVector3(hitPoint.x, hitPoint.y, hitPoint.z);
+			this.rift.createBulletTracer(muzzlePos, threeHitPoint);
+			
+			// Create impact effects
+			if (hitNormal) {
+				const threeNormal = new ThreeVector3(hitNormal.x, hitNormal.y, hitNormal.z);
+				
+				if (hitEntity instanceof Enemy) {
+					// Enemy hit - blood particles
+					this.rift.spawnImpact(threeHitPoint, threeNormal, 'flesh', true);
+					this.rift.showHit(hitEntity.health <= 0, false);
+				} else {
+					// Environment hit - bullet hole and sparks
+					this.rift.createBulletHole(threeHitPoint, threeNormal, SurfaceMaterial.CONCRETE);
+					this.rift.spawnImpact(threeHitPoint, threeNormal, 'concrete', false);
+				}
+			}
+		}
 	}
 
 	public onWindowResize() {
@@ -717,12 +869,77 @@ class World {
 
 		this.pathPlanner.update();
 
+		// Update RIFT systems
+		this._updateRIFT(delta);
+
 		this.renderer.clear();
 
 		this.renderer.render(this.scene, this.camera);
 
 		this.uiManager.update(delta);
 
+	}
+
+	/**
+	* Updates all RIFT integration systems.
+	*
+	* @param {Number} delta - The time delta.
+	*/
+	private _updateRIFT(delta: number): void {
+		if (!this.rift) return;
+
+		// Track head bob time for weapon sway
+		const speed = this.player?.velocity ? 
+			Math.sqrt(this.player.velocity.x ** 2 + this.player.velocity.z ** 2) : 0;
+		if (speed > 0.1) {
+			this.headBobTime += delta * speed * 0.5;
+		}
+
+		// Use actual sprint input from controls
+		const isSprinting = this.fpsControls?.input?.sprint ?? false;
+
+		// Update all RIFT visual systems (particles, decals, tracers, weapon system)
+		this.rift.particleSystem.update(delta);
+		this.rift.decalSystem.update(delta);
+		this.rift.tracerSystem.update(delta);
+		this.rift.weaponSystem.update(delta, this.mouseMovement, isSprinting, this.headBobTime);
+		this.rift.hudManager.updateKillfeed(delta);
+
+		// Update HUD with player state
+		if (this.player) {
+			// Update health
+			this.rift.hudManager.updateHealth(this.player.health, this.player.maxHealth);
+		}
+
+		// Update weapon HUD from RIFT weapon system
+		const config = this.rift.weaponSystem.currentConfig;
+		this.rift.hudManager.updateWeaponName(config.name);
+		this.rift.hudManager.updateAmmo(this.rift.weaponSystem.currentMag, this.rift.weaponSystem.reserveAmmo);
+		this.rift.hudManager.showReloading(this.rift.weaponSystem.isReloading);
+		this.rift.hudManager.updateCrosshair(this.rift.weaponSystem.getCurrentSpread());
+
+		// Update game mode
+		if (this.gameModeManager) {
+			this.gameModeManager.update(delta);
+		}
+
+		// Update network (multiplayer sync)
+		if (this.networkManager && this.player) {
+			this.networkManager.update(delta, this.player as any, this.camera);
+		}
+
+		// Reset mouse movement for next frame
+		this.mouseMovement.x = 0;
+		this.mouseMovement.y = 0;
+	}
+
+	/**
+	* Called from FirstPersonControls when mouse moves.
+	* Updates the mouse movement tracking for weapon system.
+	*/
+	public onMouseMove(movementX: number, movementY: number): void {
+		this.mouseMovement.x = movementX;
+		this.mouseMovement.y = movementY;
 	}
 
 }
@@ -734,9 +951,8 @@ function sync(entity: any, renderComponent: any) {
 }
 
 function syncCamera(entity: any, camera: any) {
-
+	// Copy the entity's world matrix to camera's matrixWorld
 	camera.matrixWorld.copy(entity.worldMatrix);
-
 }
 
 export default new World();

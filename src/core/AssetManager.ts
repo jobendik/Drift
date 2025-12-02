@@ -1,6 +1,6 @@
 import { LoadingManager, AnimationLoader, AudioLoader, TextureLoader, Mesh, AnimationClip, Texture } from 'three';
 import { Sprite, SpriteMaterial, DoubleSide, AudioListener, PositionalAudio } from 'three';
-import { LineSegments, LineBasicMaterial, MeshBasicMaterial, BufferGeometry, Vector3, PlaneGeometry, BufferAttribute } from 'three';
+import { LineSegments, LineBasicMaterial, MeshBasicMaterial, MeshStandardMaterial, BufferGeometry, Vector3, PlaneGeometry, BufferAttribute } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { NavMeshLoader, CostTable } from 'yuka';
 import { CONFIG } from './Config';
@@ -371,51 +371,96 @@ class AssetManager {
 
 			});
 
-			// Apply gray gradient material without textures
+		// Apply enhanced gray gradient material with procedural detail
 
-			const mesh = renderComponent.getObjectByName('level') as Mesh;
-			if (mesh && mesh.material) {
-				const material = mesh.material as MeshBasicMaterial;
+		const mesh = renderComponent.getObjectByName('level') as Mesh;
+		if (mesh && mesh.material) {
+			const oldMaterial = mesh.material as MeshBasicMaterial;
+			
+			// Simple pseudo-random function for noise
+			const hash = (x: number, y: number, z: number) => {
+				const p = Math.sin(x * 12.9898 + y * 78.233 + z * 45.164) * 43758.5453;
+				return p - Math.floor(p);
+			};
+			
+			// Add vertex colors with enhanced gradient and detail
+			const geometry = mesh.geometry;
+			
+			// Always regenerate colors (remove old if exists)
+			const positions = geometry.attributes.position;
+			const normals = geometry.attributes.normal;
+			const colors = new Float32Array(positions.count * 3);
+			
+			// Find bounds for gradient
+			let minY = Infinity, maxY = -Infinity;
+			let minX = Infinity, maxX = -Infinity;
+			let minZ = Infinity, maxZ = -Infinity;
+			
+			for (let i = 0; i < positions.count; i++) {
+				const x = positions.getX(i);
+				const y = positions.getY(i);
+				const z = positions.getZ(i);
+				if (y < minY) minY = y;
+				if (y > maxY) maxY = y;
+				if (x < minX) minX = x;
+				if (x > maxX) maxX = x;
+				if (z < minZ) minZ = z;
+				if (z > maxZ) maxZ = z;
+			}
+			
+			const rangeY = maxY - minY;
+			
+			// Apply enhanced gradient with multiple factors
+			for (let i = 0; i < positions.count; i++) {
+				const x = positions.getX(i);
+				const y = positions.getY(i);
+				const z = positions.getZ(i);
 				
-				// Remove textures
-				material.map = null;
-				material.lightMap = null;
+				// Height-based gradient (0.2 to 0.8)
+				const normalizedY = (y - minY) / rangeY;
+				let grayValue = 0.2 + normalizedY * 0.6;
 				
-				// Apply gray gradient using vertex colors
-				material.vertexColors = true;
+				// Add procedural noise for texture detail (subtle)
+				const noise = hash(x * 0.1, y * 0.1, z * 0.1);
+				grayValue += (noise - 0.5) * 0.08;
 				
-				// Add vertex colors to create gradient effect
-				const geometry = mesh.geometry;
-				if (!geometry.attributes.color) {
-					const positions = geometry.attributes.position;
-				const colors = new Float32Array(positions.count * 3);
+				// Add ambient occlusion-like darkening near edges/corners
+				if (normals) {
+					const ny = normals.getY(i);
 					
-					// Find min and max Y coordinates for gradient
-					let minY = Infinity;
-					let maxY = -Infinity;
-					for (let i = 0; i < positions.count; i++) {
-						const y = positions.getY(i);
-						if (y < minY) minY = y;
-						if (y > maxY) maxY = y;
-					}					const range = maxY - minY;
-					
-					// Apply gradient from dark gray (bottom) to light gray (top)
-					for (let i = 0; i < positions.count; i++) {
-						const y = positions.getY(i);
-						const normalizedY = (y - minY) / range;
-						// Gradient from 0.3 (dark gray) to 0.7 (light gray)
-						const grayValue = 0.3 + normalizedY * 0.4;
-						
-						colors[i * 3] = grayValue;
-						colors[i * 3 + 1] = grayValue;
-						colors[i * 3 + 2] = grayValue;
-					}
-					
-					geometry.setAttribute('color', new BufferAttribute(colors, 3));
+					// Darken based on normal orientation (occluded areas)
+					const occlusion = (ny + 1) * 0.5; // Up-facing surfaces are lighter
+					grayValue *= 0.7 + occlusion * 0.3;
 				}
 				
-				material.needsUpdate = true;
+				// Add subtle variation based on position
+				const posNoise = hash(x * 0.05, y * 0.05, z * 0.05);
+				grayValue += (posNoise - 0.5) * 0.05;
+				
+				// Clamp values
+				grayValue = Math.max(0.15, Math.min(0.85, grayValue));
+				
+				// Slight color tint for more interesting look
+				colors[i * 3] = grayValue * 0.98;     // R (slightly less red)
+				colors[i * 3 + 1] = grayValue;        // G
+				colors[i * 3 + 2] = grayValue * 1.02; // B (slightly more blue)
 			}
+			
+			geometry.setAttribute('color', new BufferAttribute(colors, 3));
+			
+			// Use MeshStandardMaterial for PBR rendering
+			const newMaterial = new MeshStandardMaterial({
+				vertexColors: true,
+				color: 0xffffff,
+				roughness: 0.9,      // Slightly rough for concrete-like appearance
+				metalness: 0.0,      // Non-metallic
+				flatShading: false,  // Smooth shading
+				envMapIntensity: 0.3 // Subtle environment reflections
+			});
+			
+			mesh.material = newMaterial;
+			oldMaterial.dispose();
+		}
 
 		models.set('level', renderComponent);
 

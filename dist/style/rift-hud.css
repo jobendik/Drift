@@ -1,0 +1,589 @@
+/* RIFT HUD Styles */
+
+#rift-hud {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
+  font-family: 'Rajdhani', 'Roboto Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: none; /* Hidden by default, shown when game starts */
+}
+
+#rift-hud.visible {
+  display: block;
+}
+
+/* ========== Health & Armor ========== */
+
+#health-container,
+#armor-container {
+  position: absolute;
+  bottom: 40px;
+  left: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#armor-container {
+  bottom: 70px;
+}
+
+#health-icon,
+#armor-icon {
+  font-size: 18px;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.5));
+}
+
+#health-bar-wrapper,
+#armor-bar-wrapper {
+  width: 180px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+#health-text,
+#armor-text {
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  min-width: 30px;
+}
+
+#health-bar,
+#armor-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease-out;
+  width: 100%;
+}
+
+#health-bar {
+  background: linear-gradient(to right, #cc0000, #ff3333);
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
+#armor-bar {
+  background: linear-gradient(to right, #0055cc, #0088ff);
+  box-shadow: 0 0 10px rgba(0, 136, 255, 0.5);
+}
+
+/* Low health animation */
+#health-bar.low {
+  animation: pulse-health 0.5s ease-in-out infinite;
+}
+
+@keyframes pulse-health {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ========== Ammo Display ========== */
+
+#ammo-container {
+  position: absolute;
+  bottom: 40px;
+  right: 40px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+#ammo-current {
+  font-size: 48px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  transition: color 0.2s;
+}
+
+#ammo-current.low {
+  color: #ff4444;
+  animation: pulse-ammo 0.3s ease-in-out infinite;
+}
+
+@keyframes pulse-ammo {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+#ammo-separator {
+  font-size: 32px;
+  color: rgba(255, 255, 255, 0.4);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#ammo-reserve {
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#weapon-name {
+  position: absolute;
+  bottom: 95px;
+  right: 40px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+/* ========== Crosshair ========== */
+
+#crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
+}
+
+#crosshair > div {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.9);
+  transition: all 0.1s ease-out;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+#crosshair-top,
+#crosshair-bottom {
+  width: 2px;
+  height: 8px;
+  left: -1px;
+}
+
+#crosshair-top {
+  bottom: 4px;
+}
+
+#crosshair-bottom {
+  top: 4px;
+}
+
+#crosshair-left,
+#crosshair-right {
+  width: 8px;
+  height: 2px;
+  top: -1px;
+}
+
+#crosshair-left {
+  right: 4px;
+}
+
+#crosshair-right {
+  left: 4px;
+}
+
+#crosshair-center {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  left: -1px;
+  top: -1px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* Crosshair color variations */
+#crosshair.hit > div {
+  background: #ff4444;
+}
+
+#crosshair.headshot > div {
+  background: #ffaa00;
+}
+
+/* ========== Hitmarker ========== */
+
+#hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+
+#hitmarker::before,
+#hitmarker::after {
+  content: '';
+  position: absolute;
+  background: white;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+#hitmarker::before {
+  width: 2px;
+  height: 100%;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+#hitmarker::after {
+  width: 100%;
+  height: 2px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+#hitmarker.kill::before,
+#hitmarker.kill::after {
+  background: #ff4444;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
+}
+
+#hitmarker.visible {
+  opacity: 1;
+  animation: hitmarker-pop 0.15s ease-out;
+}
+
+@keyframes hitmarker-pop {
+  0% { transform: translate(-50%, -50%) scale(1.5); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ========== Kill Icon ========== */
+
+#kill-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% - 40px));
+  font-size: 24px;
+  color: #ff4444;
+  opacity: 0;
+  text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+  transition: opacity 0.2s;
+}
+
+#kill-icon.visible {
+  opacity: 1;
+  animation: kill-icon-anim 0.3s ease-out;
+}
+
+@keyframes kill-icon-anim {
+  0% { transform: translate(-50%, calc(-50% - 40px)) scale(1.5); }
+  100% { transform: translate(-50%, calc(-50% - 40px)) scale(1); }
+}
+
+/* ========== Damage Vignette ========== */
+
+#damage-vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 60%,
+    rgba(255, 0, 0, 0.4) 100%
+  );
+}
+
+#damage-vignette.flash {
+  opacity: 1;
+}
+
+/* Low health persistent vignette */
+#damage-vignette.low-health {
+  opacity: 0.3;
+  animation: low-health-pulse 1s ease-in-out infinite;
+}
+
+@keyframes low-health-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.5; }
+}
+
+/* ========== Killfeed ========== */
+
+#killfeed {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 400px;
+}
+
+.killfeed-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  font-size: 14px;
+  animation: killfeed-slide 0.3s ease-out;
+  backdrop-filter: blur(4px);
+}
+
+@keyframes killfeed-slide {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.killfeed-entry .killer {
+  color: #4dabf7;
+  font-weight: bold;
+}
+
+.killfeed-entry .killer.self {
+  color: #ffd43b;
+}
+
+.killfeed-entry .weapon-icon {
+  width: 32px;
+  height: 16px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  filter: brightness(0) invert(1);
+  opacity: 0.8;
+}
+
+.killfeed-entry .victim {
+  color: #ff6b6b;
+  font-weight: bold;
+}
+
+.killfeed-entry.headshot .weapon-icon {
+  filter: brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(0deg);
+}
+
+/* ========== Reload Indicator ========== */
+
+#reload-indicator {
+  position: absolute;
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  opacity: 0;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.2s;
+}
+
+#reload-indicator.visible {
+  opacity: 1;
+  animation: reload-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes reload-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ========== Kill Streak ========== */
+
+#kill-streak {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100px);
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffd43b;
+  text-shadow: 0 0 10px rgba(255, 212, 59, 0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#kill-streak.visible {
+  opacity: 1;
+  animation: streak-anim 1.5s ease-out forwards;
+}
+
+@keyframes streak-anim {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -80px) scale(0.5);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -100px) scale(1.2);
+  }
+  30% {
+    transform: translate(-50%, -100px) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -120px);
+  }
+}
+
+/* ========== Multi-kill ========== */
+
+#multi-kill {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60px);
+  font-size: 20px;
+  font-weight: bold;
+  color: #ff922b;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(255, 146, 43, 0.5);
+  opacity: 0;
+}
+
+#multi-kill.visible {
+  animation: multi-kill-anim 1.2s ease-out forwards;
+}
+
+@keyframes multi-kill-anim {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40px) scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -60px) scale(1.1);
+  }
+  25% {
+    transform: translate(-50%, -60px) scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ========== Message Display ========== */
+
+#message-display {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  text-align: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+/* ========== Score Display ========== */
+
+#score-container {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 40px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.team-score {
+  padding: 8px 20px;
+  border-radius: 4px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.team-score.blue {
+  background: rgba(0, 100, 255, 0.6);
+  color: white;
+}
+
+.team-score.red {
+  background: rgba(255, 50, 50, 0.6);
+  color: white;
+}
+
+/* ========== Game Timer ========== */
+
+#game-timer {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px 16px;
+  border-radius: 4px;
+}
+
+/* ========== Minimap (placeholder) ========== */
+
+#minimap {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 150px;
+  height: 150px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ========== Responsive Adjustments ========== */
+
+@media (max-width: 768px) {
+  #health-container,
+  #armor-container {
+    width: 150px;
+    left: 20px;
+    bottom: 20px;
+  }
+
+  #armor-container {
+    bottom: 50px;
+  }
+
+  #ammo-container {
+    right: 20px;
+    bottom: 20px;
+  }
+
+  #ammo-current {
+    font-size: 36px;
+  }
+
+  #ammo-reserve {
+    font-size: 18px;
+  }
+
+  #weapon-name {
+    bottom: 70px;
+    right: 20px;
+  }
+}

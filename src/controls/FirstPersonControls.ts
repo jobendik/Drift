@@ -30,6 +30,10 @@ class FirstPersonControls extends EventDispatcher {
 	public weaponMovement: number;
 	public input: any;
 	public sounds: Map<string, any>;
+	
+	// RIFT-style movement enhancements
+	public isSprinting: boolean;
+	public sprintMultiplier: number;
 
 	public _mouseDownHandler: any;
 	public _mouseUpHandler: any;
@@ -38,6 +42,7 @@ class FirstPersonControls extends EventDispatcher {
 	public _pointerlockErrorHandler: any;
 	public _keyDownHandler: any;
 	public _keyUpHandler: any;
+	public _wheelHandler: any;
 
 	/**
 	* Constructs a new first person controls.
@@ -59,13 +64,18 @@ class FirstPersonControls extends EventDispatcher {
 		this.brakingPower = CONFIG.CONTROLS.BRAKING_POWER;
 		this.headMovement = CONFIG.CONTROLS.HEAD_MOVEMENT;
 		this.weaponMovement = CONFIG.CONTROLS.WEAPON_MOVEMENT;
+		
+		// RIFT-style movement
+		this.isSprinting = false;
+		this.sprintMultiplier = 1.6; // Sprint speed multiplier
 
 		this.input = {
 			forward: false,
 			backward: false,
 			right: false,
 			left: false,
-			mouseDown: false
+			mouseDown: false,
+			sprint: false
 		};
 
 		this.sounds = new Map();
@@ -77,6 +87,7 @@ class FirstPersonControls extends EventDispatcher {
 		this._pointerlockErrorHandler = onPointerlockError.bind(this);
 		this._keyDownHandler = onKeyDown.bind(this);
 		this._keyUpHandler = onKeyUp.bind(this);
+		this._wheelHandler = onWheel.bind(this);
 
 	}
 
@@ -90,6 +101,7 @@ class FirstPersonControls extends EventDispatcher {
 		document.addEventListener('mousedown', this._mouseDownHandler, false);
 		document.addEventListener('mouseup', this._mouseUpHandler, false);
 		document.addEventListener('mousemove', this._mouseMoveHandler, false);
+		document.addEventListener('wheel', this._wheelHandler, false);
 		document.addEventListener('pointerlockchange', this._pointerlockChangeHandler, false);
 		document.addEventListener('pointerlockerror', this._pointerlockErrorHandler, false);
 		document.addEventListener('keydown', this._keyDownHandler, false);
@@ -111,6 +123,7 @@ class FirstPersonControls extends EventDispatcher {
 		document.removeEventListener('mousedown', this._mouseDownHandler, false);
 		document.removeEventListener('mouseup', this._mouseUpHandler, false);
 		document.removeEventListener('mousemove', this._mouseMoveHandler, false);
+		document.removeEventListener('wheel', this._wheelHandler, false);
 		document.removeEventListener('pointerlockchange', this._pointerlockChangeHandler, false);
 		document.removeEventListener('pointerlockerror', this._pointerlockErrorHandler, false);
 		document.removeEventListener('keydown', this._keyDownHandler, false);
@@ -159,6 +172,9 @@ class FirstPersonControls extends EventDispatcher {
 		this.input.right = false;
 		this.input.left = false;
 		this.input.mouseDown = false;
+		this.input.sprint = false;
+		
+		this.isSprinting = false;
 
 		currentSign = 1;
 		elapsed = 0;
@@ -188,13 +204,20 @@ class FirstPersonControls extends EventDispatcher {
 			this._updateHead();
 			this._updateWeapon();
 
-			// if the mouse is pressed and an automatic weapon like the assault rifle is equiped
-			// support automatic fire
+			// if the mouse is pressed and an automatic weapon is equipped
+			// support automatic fire using RIFT weapon system
 
-			if (this.input.mouseDown && this.owner.isAutomaticWeaponUsed()) {
-
-				this.owner.shoot();
-
+			if (this.input.mouseDown && this.owner) {
+				// Check if using RIFT system and weapon is automatic
+				if (this.owner.world.rift) {
+					const weaponConfig = this.owner.world.rift.weaponSystem.currentConfig;
+					if (weaponConfig.automatic) {
+						this.owner.shoot();
+					}
+				} else if (this.owner.isAutomaticWeaponUsed()) {
+					// Fallback to old system
+					this.owner.shoot();
+				}
 			}
 
 		}
@@ -221,10 +244,21 @@ class FirstPersonControls extends EventDispatcher {
 		direction.x = Number(input.left) - Number(input.right);
 		direction.normalize();
 
-		if (input.forward || input.backward) velocity.z -= direction.z * CONFIG.CONTROLS.ACCELERATION * delta;
-		if (input.left || input.right) velocity.x -= direction.x * CONFIG.CONTROLS.ACCELERATION * delta;
+		// RIFT-style sprint detection
+		const isMovingForward = input.forward && !input.backward;
+		this.isSprinting = input.sprint && isMovingForward;
+		
+		// Apply speed multiplier based on sprint state
+		const speedMultiplier = this.isSprinting ? this.sprintMultiplier : 1.0;
+		const acceleration = CONFIG.CONTROLS.ACCELERATION * speedMultiplier;
+
+		if (input.forward || input.backward) velocity.z -= direction.z * acceleration * delta;
+		if (input.left || input.right) velocity.x -= direction.x * acceleration * delta;
 
 		if (!owner) return this;
+
+		// Update player's maxSpeed to allow sprint velocity
+		owner.maxSpeed = CONFIG.PLAYER.MAX_SPEED * speedMultiplier;
 
 		owner.velocity.copy(velocity).applyRotation(owner.rotation);
 
@@ -313,12 +347,14 @@ class FirstPersonControls extends EventDispatcher {
 function onMouseDown(this: FirstPersonControls, event: any) {
 
 	if (this.active && event.which === 1) {
-
+		event.preventDefault();
+		
 		this.input.mouseDown = true;
+		
+		// Always fire on first click for all weapons
 		if (this.owner) {
 			this.owner.shoot();
 		}
-
 	}
 
 }
@@ -326,7 +362,7 @@ function onMouseDown(this: FirstPersonControls, event: any) {
 function onMouseUp(this: FirstPersonControls, event: any) {
 
 	if (this.active && event.which === 1) {
-
+		event.preventDefault();
 		this.input.mouseDown = false;
 
 	}
@@ -345,6 +381,11 @@ function onMouseMove(this: FirstPersonControls, event: any) {
 		if (this.owner) {
 			this.owner.rotation.fromEuler(0, this.movementX, 0); // yaw
 			this.owner.head.rotation.fromEuler(this.movementY, 0, 0); // pitch
+			
+			// Pass mouse movement to World for RIFT weapon system
+			if (this.owner.world && this.owner.world.onMouseMove) {
+				this.owner.world.onMouseMove(event.movementX, event.movementY);
+			}
 		}
 
 	}
@@ -399,29 +440,39 @@ function onKeyDown(this: FirstPersonControls, event: any) {
 				this.input.right = true;
 				break;
 
+			case 16: // shift (sprint)
+				this.input.sprint = true;
+				break;
+
 			case 82: // r
 				if (!this.owner) break;
 				this.owner.reload();
 				break;
 
 			case 49: // 1
-				if (!this.owner) break;
-				this.owner.changeWeapon(WEAPON_TYPES_BLASTER);
-				break;
-
 			case 50: // 2
-				if (this.owner && this.owner.hasWeapon(WEAPON_TYPES_SHOTGUN)) {
-
-					this.owner.changeWeapon(WEAPON_TYPES_SHOTGUN);
-
-				}
-				break;
-
 			case 51: // 3
-				if (this.owner && this.owner.hasWeapon(WEAPON_TYPES_ASSAULT_RIFLE)) {
-
-					this.owner.changeWeapon(WEAPON_TYPES_ASSAULT_RIFLE);
-
+			case 52: // 4
+			case 53: // 5
+			case 54: // 6
+			case 55: // 7
+			case 56: // 8
+			case 57: // 9
+				if (this.owner && this.owner.world.rift) {
+					const weaponIndex = event.keyCode - 49; // 0-8 for keys 1-9
+					const equippedWeapons = this.owner.world.rift.weaponSystem.getEquippedWeapons();
+					if (weaponIndex < equippedWeapons.length) {
+						this.owner.world.rift.weaponSystem.switchWeapon(weaponIndex);
+					}
+				} else {
+					// Fallback to old system
+					if (event.keyCode === 49 && this.owner) {
+						this.owner.changeWeapon(WEAPON_TYPES_BLASTER);
+					} else if (event.keyCode === 50 && this.owner && this.owner.hasWeapon(WEAPON_TYPES_SHOTGUN)) {
+						this.owner.changeWeapon(WEAPON_TYPES_SHOTGUN);
+					} else if (event.keyCode === 51 && this.owner && this.owner.hasWeapon(WEAPON_TYPES_ASSAULT_RIFLE)) {
+						this.owner.changeWeapon(WEAPON_TYPES_ASSAULT_RIFLE);
+					}
 				}
 				break;
 
@@ -457,7 +508,24 @@ function onKeyUp(this: FirstPersonControls, event: any) {
 				this.input.right = false;
 				break;
 
+			case 16: // shift (sprint)
+				this.input.sprint = false;
+				break;
+
 		}
+
+	}
+
+}
+
+function onWheel(this: FirstPersonControls, event: WheelEvent) {
+
+	if (this.active && this.owner && this.owner.world.rift) {
+
+		event.preventDefault();
+		
+		const direction = event.deltaY > 0 ? 1 : -1;
+		this.owner.world.rift.weaponSystem.scrollWeapon(direction);
 
 	}
 

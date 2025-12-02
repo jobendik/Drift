@@ -108,15 +108,15 @@ class UIManager {
 	*/
 	init(): this {
 
-		this._buildFPSInterface();
+	this._buildFPSInterface();
 
-		//
+	//
 
-		const world = this.world;
+	const world = this.world;
 
-		if (world.debug) {
+	if (world.debug === true) {
 
-			const gui = new DAT.GUI({ width: 300 });
+		const gui = new DAT.GUI({ width: 300 });
 			const params = this.debugParameter;
 
 			// nav mesh folder
