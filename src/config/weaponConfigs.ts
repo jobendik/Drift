@@ -2,7 +2,7 @@
 
 import { WeaponType, WeaponConfig, SprayPatternConfig, ScreenEffectsConfig, AnimationConfig } from '../types/weapons';
 
-const BASE_AUDIO_PATH = 'audios/weapons/';
+const BASE_AUDIO_PATH = 'assets/audio/weapons/';
 
 const DEFAULT_SPRAY_PATTERN: SprayPatternConfig = {
   enabled: true,

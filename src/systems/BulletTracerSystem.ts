@@ -1,6 +1,3 @@
-// RIFT Integration - Bullet Tracer System
-// Handles visual bullet trails/tracers
-
 import * as THREE from 'three';
 
 interface TracerInstance {
@@ -19,7 +16,7 @@ export class BulletTracerSystem {
   private fireTracerTexture?: THREE.Texture;
   private sharedGeometry: THREE.PlaneGeometry;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, _camera: THREE.Camera) {
     this.scene = scene;
     this.sharedGeometry = new THREE.PlaneGeometry(1, 1);
     this.loadTextures();
@@ -28,26 +25,27 @@ export class BulletTracerSystem {
   private loadTextures(): void {
     const textureLoader = new THREE.TextureLoader();
     
+    // Load tracer textures
     textureLoader.load(
-      'textures/effects/bullet-trace.png',
+      'assets/images/Bullet-Trace.png_1b6132fc.png',
       (texture) => {
         this.tracerTexture = texture;
         this.tracerTexture.wrapS = THREE.RepeatWrapping;
         this.tracerTexture.wrapT = THREE.RepeatWrapping;
       },
       undefined,
-      () => {}
+      (err) => console.warn('Failed to load bullet trace texture:', err)
     );
 
     textureLoader.load(
-      'textures/effects/fire-trace.jpg',
+      'assets/images/Bullet-Fire-Trace.jpg_d795b3f8.jpg',
       (texture) => {
         this.fireTracerTexture = texture;
         this.fireTracerTexture.wrapS = THREE.RepeatWrapping;
         this.fireTracerTexture.wrapT = THREE.RepeatWrapping;
       },
       undefined,
-      () => {}
+      (err) => console.warn('Failed to load fire trace texture:', err)
     );
   }
 
@@ -90,14 +88,10 @@ export class BulletTracerSystem {
   }
 
   /**
-   * Create bullet tracer from start to end point
+   * Create visually impressive textured bullet tracer beam
+   * Dopamine-inducing fast tracer with proper texture stretching
    */
-  public createTracer(
-    start: THREE.Vector3,
-    end: THREE.Vector3,
-    color: number = 0x00ffff,
-    useFireTexture: boolean = false
-  ): void {
+  public createTracer(start: THREE.Vector3, end: THREE.Vector3, color: number = 0x00ffff, useFireTexture: boolean = false): void {
     const direction = new THREE.Vector3().subVectors(end, start);
     const distance = direction.length();
     
@@ -112,23 +106,22 @@ export class BulletTracerSystem {
     instance.material.opacity = 1.0;
     instance.material.needsUpdate = true;
 
-    // Setup mesh transform - center between start and end
+    // Setup mesh transform
     instance.mesh.position.copy(start).addScaledVector(direction, 0.5);
     
-    // Orient along bullet path
     const quaternion = new THREE.Quaternion();
     quaternion.setFromUnitVectors(
-      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(1, 0, 0), // plane's X axis
       direction.clone().normalize()
     );
     instance.mesh.quaternion.copy(quaternion);
     
-    // Scale: X = length, Y = thickness
-    const thickness = 0.15;
+    // Scale: X = length of ray, Y = thickness (visual width)
+    const thickness = 0.15; // Slightly thinner for cleaner look
     instance.mesh.scale.set(distance, thickness, 1);
 
     instance.lifetime = 0;
-    instance.maxLifetime = 0.15;
+    instance.maxLifetime = 0.15; // Fast fade
     
     this.activeTracers.push(instance);
   }
@@ -147,19 +140,6 @@ export class BulletTracerSystem {
     });
   }
 
-  /**
-   * Create instant hitscan tracer (brief flash)
-   */
-  public createHitscanTracer(
-    start: THREE.Vector3,
-    direction: THREE.Vector3,
-    maxDistance: number = 100,
-    color: number = 0xffff00
-  ): void {
-    const end = start.clone().add(direction.clone().multiplyScalar(maxDistance));
-    this.createTracer(start, end, color, false);
-  }
-
   public update(delta: number): void {
     for (let i = this.activeTracers.length - 1; i >= 0; i--) {
       const tracer = this.activeTracers[i];
@@ -169,7 +149,7 @@ export class BulletTracerSystem {
         this.returnToPool(tracer);
         this.activeTracers.splice(i, 1);
       } else {
-        // Fast fade
+        // Fast, snappy fade: alpha = 1 - age/lifetime
         const fadeProgress = tracer.lifetime / tracer.maxLifetime;
         tracer.material.opacity = 1.0 - fadeProgress;
       }
@@ -177,12 +157,14 @@ export class BulletTracerSystem {
   }
 
   public clear(): void {
+    // Return all active to pool
     this.activeTracers.forEach(t => this.returnToPool(t));
     this.activeTracers = [];
     
+    // Clean up pool
     this.pool.forEach(t => {
-      this.scene.remove(t.mesh);
-      t.material.dispose();
+        this.scene.remove(t.mesh);
+        t.material.dispose();
     });
     this.pool = [];
     this.sharedGeometry.dispose();

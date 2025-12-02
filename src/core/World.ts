@@ -40,6 +40,9 @@ class World {
 	public lobbyManager!: LobbyManager;
 	public lobbyUI!: LobbyUI;
 
+	// Physics collision objects
+	public arenaObjects: Array<{ mesh: THREE.Mesh; box: THREE.Box3 }> = [];
+
 	// Mouse tracking for weapon system
 	private mouseMovement: { x: number; y: number } = { x: 0, y: 0 };
 	private headBobTime: number = 0;
@@ -91,18 +94,18 @@ class World {
 		this.time = new Time();
 		this.tick = 0;
 
-	this.spawningManager = new SpawningManager(this);
-	this.uiManager = new UIManager(this);
+		this.spawningManager = new SpawningManager(this);
+		this.uiManager = new UIManager(this);
 
-	this.useFPSControls = true;
+		this.useFPSControls = true;
 
-	this.enemyCount = CONFIG.BOT.COUNT;
-	this.competitors = new Array();
+		this.enemyCount = CONFIG.BOT.COUNT;
+		this.competitors = new Array();
 
-	this._animate = this.animate.bind(this);
-	this._onWindowResize = this.onWindowResize.bind(this);
+		this._animate = this.animate.bind(this);
+		this._onWindowResize = this.onWindowResize.bind(this);
 
-	this.debug = false;		this.helpers = {
+		this.debug = false; this.helpers = {
 			convexRegionHelper: null,
 			spatialIndexHelper: null,
 			axesHelper: null,
@@ -484,7 +487,14 @@ class World {
 		level.name = 'level';
 		level.setRenderComponent(renderComponent, sync);
 
+		level.setRenderComponent(renderComponent, sync);
+
 		this.add(level);
+
+		// Populate arenaObjects for physics collision
+		this.arenaObjects = [];
+		const box = new THREE.Box3().setFromObject(mesh);
+		this.arenaObjects.push({ mesh: mesh as THREE.Mesh, box: box });
 
 		// navigation mesh
 
@@ -662,16 +672,16 @@ class World {
 				this.rift.hudManager.hide();
 			}
 
-	});
+		});
 
-	// Auto-lock controls to start in first-person mode
-	setTimeout(() => {
-		this.fpsControls.connect();
-	}, 100);
+		// Auto-lock controls to start in first-person mode
+		setTimeout(() => {
+			this.fpsControls.connect();
+		}, 100);
 
-	return this;
+		return this;
 
-}	/**
+	}	/**
 	* Inits the user interface.
 	*
 	* @return {World} A reference to this world object.
@@ -702,7 +712,7 @@ class World {
 
 		// Initialize Game Mode Manager
 		this.gameModeManager = new GameModeManager(this);
-		
+
 		// Initialize Network Manager for multiplayer
 		this.networkManager = new NetworkManager();
 
@@ -719,18 +729,18 @@ class World {
 		});
 
 		console.log('RIFT Integration initialized successfully');
-		
+
 		// Remove any old Drift weapon meshes from the scene
 		const oldWeaponNames = ['blaster_high', 'shotgun_high', 'assaultRifle_high'];
 		const meshesToRemove: any[] = [];
-		
+
 		this.scene.traverse((object: any) => {
 			if (object.isMesh && oldWeaponNames.some(name => object.name?.includes(name))) {
 				meshesToRemove.push(object);
 			}
 			// Also check parent objects that might be the weapon groups
 			if (object.isGroup && object.children.length > 0) {
-				const hasWeaponMesh = object.children.some((child: any) => 
+				const hasWeaponMesh = object.children.some((child: any) =>
 					child.isMesh && oldWeaponNames.some(name => child.name?.includes(name))
 				);
 				if (hasWeaponMesh) {
@@ -738,12 +748,12 @@ class World {
 				}
 			}
 		});
-		
+
 		meshesToRemove.forEach(mesh => {
 			this.scene.remove(mesh);
 			console.log('Removed old Drift weapon from scene:', mesh.name || mesh.type);
 		});
-		
+
 		console.log(`Removed ${meshesToRemove.length} old weapon meshes from scene`);
 
 		return this;
@@ -762,14 +772,14 @@ class World {
 		// Handle match starting
 		this.lobbyManager.on(LobbyEventType.MATCH_STARTING, async (data: unknown) => {
 			const matchData = data as { serverUrl: string; token: string; matchId: string; modeId: string };
-			
+
 			// Connect to game server
 			const connected = await this.networkManager.connect(
 				matchData.serverUrl,
 				matchData.token,
 				matchData.matchId
 			);
-			
+
 			if (connected) {
 				this.lobbyUI.hide();
 				this._startMultiplayerGame(matchData.modeId);
@@ -791,7 +801,7 @@ class World {
 			'tdm': GameModeType.TEAM_DEATHMATCH,
 			'wave': GameModeType.WAVE_SURVIVAL
 		};
-		
+
 		const gameMode = modeMap[modeId] || GameModeType.FREE_FOR_ALL;
 		this.gameModeManager.setMode(gameMode);
 		this.gameModeManager.start();
@@ -803,16 +813,16 @@ class World {
 	*/
 	public handleRiftShot(hitPoint: Vector3 | null, hitNormal: Vector3 | null, hitEntity: any): void {
 		const muzzlePos = this.rift.weaponSystem.getMuzzlePosition();
-		
+
 		if (hitPoint) {
 			// Convert Yuka Vector3 to Three.js Vector3
 			const threeHitPoint = new ThreeVector3(hitPoint.x, hitPoint.y, hitPoint.z);
 			this.rift.createBulletTracer(muzzlePos, threeHitPoint);
-			
+
 			// Create impact effects
 			if (hitNormal) {
 				const threeNormal = new ThreeVector3(hitNormal.x, hitNormal.y, hitNormal.z);
-				
+
 				if (hitEntity instanceof Enemy) {
 					// Enemy hit - blood particles
 					this.rift.spawnImpact(threeHitPoint, threeNormal, 'flesh', true);
@@ -889,7 +899,7 @@ class World {
 		if (!this.rift) return;
 
 		// Track head bob time for weapon sway
-		const speed = this.player?.velocity ? 
+		const speed = this.player?.velocity ?
 			Math.sqrt(this.player.velocity.x ** 2 + this.player.velocity.z ** 2) : 0;
 		if (speed > 0.1) {
 			this.headBobTime += delta * speed * 0.5;

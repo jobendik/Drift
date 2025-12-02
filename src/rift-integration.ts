@@ -1,202 +1,191 @@
-// RIFT Integration - Master Integration Module
-// Combines all RIFT systems for easy import into Drift
-
 import * as THREE from 'three';
-
-// Re-export all types
-export * from './types';
-
-// Re-export all configs
-export * from './config';
-
-// Re-export all systems
-export * from './systems';
-
-// Re-export UI components
-export * from './ui';
-
-// Re-export managers
-export * from './managers';
-
-// Re-export game modes
-export * from './gamemodes';
-
-// Re-export network
-export * from './network';
-
-// Re-export lobby
-export * from './lobby';
-
-// Import specific classes for the integration helper
-import { ParticleSystem } from './systems/ParticleSystem';
+import { AssetManager } from './core/AssetManager';
 import { WeaponSystem } from './systems/WeaponSystem';
+import { ParticleSystem } from './systems/ParticleSystem';
 import { DecalSystem, SurfaceMaterial } from './systems/DecalSystem';
 import { BulletTracerSystem } from './systems/BulletTracerSystem';
+import { ImpactSystem } from './systems/ImpactSystem';
 import { HUDManager } from './ui/HUDManager';
+import { KillfeedManager } from './ui/KillfeedManager';
+
 import { AudioManager } from './managers/AudioManager';
 
 /**
- * RIFTIntegration - Helper class to initialize all RIFT systems at once
+ * RIFT Integration Manager
  * 
- * Usage:
- * ```typescript
- * const rift = new RIFTIntegration(scene, camera);
- * 
- * // In game loop:
- * rift.update(delta);
- * 
- * // On weapon fire:
- * const result = rift.weaponSystem.shoot(camera, onGround, sprinting, velocity);
- * if (result.shotFired) {
- *   rift.createBulletTracer(muzzlePos, hitPos);
- *   rift.createBulletHole(hitPos, hitNormal);
- * }
- * ```
+ * This class serves as the bridge between the existing Drift engine and the new RIFT FPS systems.
+ * It initializes and manages all the subsystems required for the FPS experience.
  */
 export class RIFTIntegration {
-  public particleSystem: ParticleSystem;
+  // Systems
   public weaponSystem: WeaponSystem;
+  public particleSystem: ParticleSystem;
   public decalSystem: DecalSystem;
   public tracerSystem: BulletTracerSystem;
-  public hudManager: HUDManager;
+  public impactSystem: ImpactSystem;
   public audioManager: AudioManager;
+  
+  // UI
+  public hudManager: HUDManager;
+  public killfeedManager: KillfeedManager;
 
-  constructor(scene: THREE.Scene, camera: THREE.Camera) {
+  // Core references
+  private camera: THREE.Camera;
+  private raycaster: THREE.Raycaster;
 
-    // Initialize all systems
+  // State
+  private isInitialized: boolean = false;
+
+  constructor(
+    scene: THREE.Scene, 
+    camera: THREE.Camera, 
+    audioListener: THREE.AudioListener,
+    assetManager: AssetManager
+  ) {
+    this.camera = camera;
+    this.raycaster = new THREE.Raycaster();
+
+    // Initialize Audio Manager
     this.audioManager = new AudioManager(camera);
-    this.particleSystem = new ParticleSystem(scene);
-    this.weaponSystem = new WeaponSystem(
-      camera,
-      this.audioManager.getListener(),
-      this.particleSystem,
-      scene  // Pass scene so weapon is added to scene, not camera
-    );
-    this.decalSystem = new DecalSystem(scene);
-    this.tracerSystem = new BulletTracerSystem(scene);
-    this.hudManager = new HUDManager();
 
-    // Setup shell ejection callback
-    this.weaponSystem.setShellEjectCallback((pos, dir) => {
-      this.particleSystem.spawnShellCasing(pos, dir);
-    });
+    // Initialize Systems
+    this.particleSystem = new ParticleSystem(scene);
+    this.decalSystem = new DecalSystem(scene);
+    this.tracerSystem = new BulletTracerSystem(scene, camera);
+    this.impactSystem = new ImpactSystem(scene, audioListener);
+    
+    // WeaponSystem depends on ParticleSystem
+    this.weaponSystem = new WeaponSystem(scene, camera, assetManager, this.audioManager);
+
+    // Initialize UI
+    this.hudManager = new HUDManager();
+    this.killfeedManager = new KillfeedManager();
+
+    this.isInitialized = true;
+    console.log('RIFT Integration Initialized');
   }
 
   /**
-   * Update all systems - call this every frame
+   * Handle shooting logic including raycasting, effects, and damage
    */
-  public update(
-    delta: number,
-    mouseMovement: { x: number; y: number } = { x: 0, y: 0 },
-    isSprinting: boolean = false,
-    headBobTime: number = 0
+  public handleShooting(
+    playerOnGround: boolean, 
+    playerIsSprinting: boolean, 
+    playerVelocity: THREE.Vector3,
+    obstacles: THREE.Object3D[]
   ): void {
+    const result = this.weaponSystem.shoot(
+      this.camera,
+      playerOnGround,
+      playerIsSprinting,
+      playerVelocity
+    );
+
+    if (result.shotFired) {
+      // Handle recoil on camera
+      // Note: In a full integration, this would modify the camera's rotation directly
+      // or feed into the input system. For now, we'll let the WeaponSystem handle its internal recoil state
+      // and the PlayerController should query it.
+
+      // Process each shot (shotguns have multiple)
+      const directions = result.directions || [result.direction];
+      
+      directions.forEach((dir: THREE.Vector3) => {
+        this.processShot(dir, obstacles);
+      });
+
+      // Update HUD
+      this.updateHUD();
+    }
+  }
+
+  private processShot(direction: THREE.Vector3, obstacles: THREE.Object3D[]): void {
+    const muzzlePos = this.weaponSystem.getMuzzleWorldPosition();
+    
+    // Raycast
+    this.raycaster.set(this.camera.position, direction);
+    const intersects = this.raycaster.intersectObjects(obstacles, true);
+
+    let endPoint: THREE.Vector3;
+    let hitObject: THREE.Object3D | null = null;
+
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      endPoint = hit.point;
+      hitObject = hit.object;
+
+      // Determine material
+      // In a real implementation, we'd check the object's userData or material type
+      // For now, we'll default to CONCRETE/STONE unless specified
+      let material = SurfaceMaterial.ROCK;
+      
+      // Check for specific materials based on object names or userData
+      if (hitObject.name.includes('wood') || hitObject.userData.material === 'wood') {
+        material = SurfaceMaterial.WOOD;
+      } else if (hitObject.name.includes('metal') || hitObject.userData.material === 'metal') {
+        material = SurfaceMaterial.METAL;
+      }
+
+      // Spawn effects
+      this.decalSystem.createDecal(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
+      
+      // Use spawnMaterialImpact for surface hits
+      this.particleSystem.spawnMaterialImpact(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
+      
+      this.impactSystem.playSurfaceImpact(hit.point, material);
+
+      // Apply damage if it's an entity
+      // This would connect to the game's damage system
+      if (hitObject.userData.entity) {
+        // hitObject.userData.entity.takeDamage(...)
+        this.impactSystem.playBodyImpact(hit.point);
+        this.hudManager.showHitmarker(false); // false = not a kill
+        
+        // Also spawn blood/impact effect for body hit
+        this.particleSystem.spawnImpactEffect(hit.point, false);
+      }
+
+    } else {
+      // Miss - extend to max range
+      endPoint = this.camera.position.clone().add(direction.multiplyScalar(100));
+    }
+
+    // Create tracer
+    this.tracerSystem.createTracer(muzzlePos, endPoint);
+  }
+
+  public update(delta: number, mouseMovement: { x: number, y: number }, isSprinting: boolean): void {
+    if (!this.isInitialized) return;
+
+    // Update all systems
+    this.weaponSystem.update(delta, mouseMovement, isSprinting);
     this.particleSystem.update(delta);
-    this.weaponSystem.update(delta, mouseMovement, isSprinting, headBobTime);
     this.decalSystem.update(delta);
     this.tracerSystem.update(delta);
-    this.hudManager.updateKillfeed(delta);
+
+    // Update HUD with weapon state
+    this.updateHUD();
   }
 
-  /**
-   * Create a bullet tracer from start to end point
-   */
-  public createBulletTracer(
-    start: THREE.Vector3,
-    end: THREE.Vector3,
-    color: number = 0xffff00
-  ): void {
-    this.tracerSystem.createTracer(start, end, color);
+  private updateHUD(): void {
+    this.hudManager.updateAmmo(
+      this.weaponSystem.currentMag,
+      this.weaponSystem.reserveAmmo
+    );
+    
+    // Update crosshair spread based on weapon state
+    const spread = this.weaponSystem.getCurrentSpread();
+    this.hudManager.updateCrosshair(spread * 100); // Scale for visual effect
   }
 
-  /**
-   * Create a bullet hole decal at impact point
-   */
-  public createBulletHole(
-    position: THREE.Vector3,
-    normal: THREE.Vector3,
-    material: SurfaceMaterial = SurfaceMaterial.DEFAULT
-  ): void {
-    this.decalSystem.createBulletHole(position, normal, material);
+  public resize(_width: number, _height: number): void {
+    // Handle resize events if necessary
   }
 
-  /**
-   * Spawn impact particles at hit location
-   */
-  public spawnImpact(
-    position: THREE.Vector3,
-    normal: THREE.Vector3,
-    material: string = 'default',
-    isEnemy: boolean = false
-  ): void {
-    if (isEnemy) {
-      this.particleSystem.spawnImpactEffect(position, false);
-    } else {
-      this.particleSystem.spawnMaterialImpact(position, normal, material);
-    }
-  }
-
-  /**
-   * Show hit feedback on HUD (hitmarker + crosshair)
-   */
-  public showHit(isKill: boolean = false, isHeadshot: boolean = false): void {
-    this.hudManager.showHitmarker(isKill);
-    this.hudManager.showHitFeedback(isKill, isHeadshot);
-    if (isKill) {
-      this.hudManager.showKillIcon();
-    }
-  }
-
-  /**
-   * Update HUD with current weapon state
-   */
-  public updateWeaponHUD(): void {
-    const config = this.weaponSystem.currentConfig;
-    this.hudManager.updateWeaponName(config.name);
-    this.hudManager.updateAmmo(this.weaponSystem.currentMag, this.weaponSystem.reserveAmmo);
-    this.hudManager.showReloading(this.weaponSystem.isReloading);
-    this.hudManager.updateCrosshair(this.weaponSystem.getCurrentSpread());
-  }
-
-  /**
-   * Update HUD with player health
-   */
-  public updateHealthHUD(health: number, maxHealth: number, armor?: number, maxArmor?: number): void {
-    this.hudManager.updateHealth(health, maxHealth);
-    if (armor !== undefined && maxArmor !== undefined) {
-      this.hudManager.updateArmor(armor, maxArmor);
-    }
-  }
-
-  /**
-   * Play a positioned sound in the world
-   */
-  public playWorldSound(
-    path: string,
-    position: THREE.Vector3,
-    volume: number = 1.0
-  ): void {
-    this.audioManager.playPositionalSound(path, position, 'sfx', { volume });
-  }
-
-  /**
-   * Clean up all systems
-   */
   public dispose(): void {
-    this.particleSystem.clear();
     this.decalSystem.clear();
     this.tracerSystem.clear();
-    this.audioManager.dispose();
-  }
-
-  /**
-   * Reset all systems for a new game
-   */
-  public reset(): void {
-    this.weaponSystem.reset();
     this.particleSystem.clear();
-    this.decalSystem.clear();
-    this.tracerSystem.clear();
-    this.hudManager.reset();
+    // Dispose other resources
   }
 }

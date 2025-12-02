@@ -1,20 +1,7 @@
-// RIFT Integration - Decal System
-// Handles bullet holes, impact marks on surfaces
-
 import * as THREE from 'three';
+import { SurfaceMaterial } from './ImpactSystem';
 
-export enum SurfaceMaterial {
-  METAL = 'metal',
-  WOOD = 'wood',
-  CONCRETE = 'concrete',
-  BRICK = 'brick',
-  ROCK = 'rock',
-  GLASS = 'glass',
-  DIRT = 'dirt',
-  GRASS = 'grass',
-  FLESH = 'flesh',
-  DEFAULT = 'default',
-}
+export { SurfaceMaterial }; // Re-export for compatibility
 
 interface Decal {
   mesh: THREE.Mesh;
@@ -28,7 +15,7 @@ export class DecalSystem {
   private scene: THREE.Scene;
   private bulletHoleTexture?: THREE.Texture;
   private crackHoleTexture?: THREE.Texture;
-  private maxDecals = 50;
+  private maxDecals = 50; // Limit to maintain performance and visual clarity
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -39,46 +26,48 @@ export class DecalSystem {
     const textureLoader = new THREE.TextureLoader();
 
     textureLoader.load(
-      'textures/effects/bullet-hole.png',
+      'assets/images/Bullet-Hole.png_6e4be8ce.png',
       (texture) => {
         this.bulletHoleTexture = texture;
       },
       undefined,
-      () => {}
+      (err) => console.warn('Failed to load bullet hole texture:', err)
     );
 
     textureLoader.load(
-      'textures/effects/crack-hole.png',
+      'assets/images/Crack-Hole.png_ee41c0b1.png',
       (texture) => {
         this.crackHoleTexture = texture;
       },
       undefined,
-      () => {}
+      (err) => console.warn('Failed to load crack hole texture:', err)
     );
   }
 
   /**
    * Create a bullet hole decal at impact point
+   * Decals are oriented to surface normal and fade over time for visual clarity
    */
   public createBulletHole(
     position: THREE.Vector3,
     normal: THREE.Vector3,
-    material: SurfaceMaterial = SurfaceMaterial.DEFAULT
+    material: SurfaceMaterial
   ): void {
-    // Use fallback if no texture loaded
+    if (!this.bulletHoleTexture) return;
+
+    // Use crack texture for brick/rock surfaces for variety
     const useCrack = 
       (material === SurfaceMaterial.BRICK || material === SurfaceMaterial.ROCK) &&
       this.crackHoleTexture &&
       Math.random() < 0.3;
 
     const texture = useCrack ? this.crackHoleTexture : this.bulletHoleTexture;
-    const size = 0.15 + Math.random() * 0.1;
+    const size = 0.15 + Math.random() * 0.1; // Slight size variation
 
     // Create decal mesh
     const geometry = new THREE.PlaneGeometry(size, size);
     const mat = new THREE.MeshBasicMaterial({
-      map: texture || null,
-      color: texture ? 0xffffff : 0x333333,
+      map: texture,
       transparent: true,
       opacity: 0.9,
       depthWrite: false,
@@ -98,6 +87,7 @@ export class DecalSystem {
 
     this.scene.add(decal);
     
+    // Fade decals after 8 seconds, fully remove after 12 to keep arena clean
     this.decals.push({
       mesh: decal,
       lifetime: 0,
@@ -116,26 +106,9 @@ export class DecalSystem {
     }
   }
 
-  /**
-   * Detect surface material from mesh userData or name
-   */
-  public detectSurfaceMaterial(mesh: THREE.Object3D): SurfaceMaterial {
-    const userData = mesh.userData;
-    if (userData.surfaceMaterial) {
-      return userData.surfaceMaterial as SurfaceMaterial;
-    }
-
-    const name = mesh.name.toLowerCase();
-    if (name.includes('metal') || name.includes('steel')) return SurfaceMaterial.METAL;
-    if (name.includes('wood') || name.includes('crate')) return SurfaceMaterial.WOOD;
-    if (name.includes('concrete') || name.includes('floor')) return SurfaceMaterial.CONCRETE;
-    if (name.includes('brick')) return SurfaceMaterial.BRICK;
-    if (name.includes('rock') || name.includes('stone')) return SurfaceMaterial.ROCK;
-    if (name.includes('glass')) return SurfaceMaterial.GLASS;
-    if (name.includes('dirt') || name.includes('mud')) return SurfaceMaterial.DIRT;
-    if (name.includes('grass')) return SurfaceMaterial.GRASS;
-
-    return SurfaceMaterial.DEFAULT;
+  // Alias for compatibility
+  public createDecal(position: THREE.Vector3, normal: THREE.Vector3, material: SurfaceMaterial): void {
+    this.createBulletHole(position, normal, material);
   }
 
   public update(delta: number): void {
