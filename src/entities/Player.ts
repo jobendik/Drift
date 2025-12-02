@@ -159,7 +159,6 @@ class Player extends MovingEntity {
 
 		// Capture Input from Controls
 		const input = this.world.fpsControls.input;
-		console.log('DEBUG: Player Input', JSON.stringify(input));
 		const inputDir = new Vector3();
 		if (input.forward) inputDir.z -= 1;
 		if (input.backward) inputDir.z += 1;
@@ -228,11 +227,9 @@ class Player extends MovingEntity {
 
 		const hasInput = inputDir.squaredLength() > 0;
 		if (hasInput) {
-			console.log('DEBUG: updatePhysics hasInput', inputDir);
 			inputDir.normalize();
 			// Apply rotation to input
 			inputDir.applyRotation(this.rotation);
-			console.log('DEBUG: inputDir after rotation', inputDir);
 
 			// Slope adjustment
 			if (this.onGround && this.slopeAngle > 0) {
@@ -284,6 +281,7 @@ class Player extends MovingEntity {
 		if (this.isSprinting) targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
 
 		const isGrounded = this.onGround;
+		console.log('Movement Debug - onGround:', this.onGround, 'hasInput:', hasInput, 'inputDir:', inputDir, 'targetSpeed:', targetSpeed);
 		// Horizontal velocity
 		const horizVel = new Vector3(this.velocity.x, 0, this.velocity.z);
 
@@ -309,7 +307,6 @@ class Player extends MovingEntity {
 					diff.normalize().multiplyScalar(alpha);
 				}
 				horizVel.add(diff);
-				console.log('DEBUG: TargetVel', targetVel, 'HorizVel', horizVel, 'Delta', delta);
 			} else {
 				const decayFactor = Math.exp(-decel * delta);
 				horizVel.multiplyScalar(decayFactor);
@@ -368,14 +365,14 @@ class Player extends MovingEntity {
 		this.velocity.y -= (PLAYER_CONFIG.gravity || 35) * delta;
 
 		// Move
-		console.log('DEBUG: Pre-Integration Position', this.position, 'Velocity', this.velocity);
 		const moveStep = this.velocity.clone().multiplyScalar(delta);
 		const newPos = this.position.clone().add(moveStep);
 
 		// Collision
 		const playerRadius = this.boundingRadius;
 		const stepHeight = PLAYER_CONFIG.stepHeight || 0.5;
-		this.onGround = false;
+		// Default to on ground if no arena objects to check (fixes movement when arenaObjects is empty)
+		this.onGround = arenaObjects.length === 0 ? true : false;
 
 		this.checkSlope(arenaObjects);
 
@@ -403,7 +400,6 @@ class Player extends MovingEntity {
 				maxZ > box.min.z && minZ < box.max.z) {
 
 				// Resolve collision
-				console.log('DEBUG: Collision Detected with', obj);
 				// Simplified resolution: push out of shallowest penetration
 				const overlapX = Math.min(maxX - box.min.x, box.max.x - minX);
 				const overlapY = Math.min(maxY - box.min.y, box.max.y - minY);
@@ -449,7 +445,6 @@ class Player extends MovingEntity {
 		}
 
 		this.position.copy(newPos);
-		console.log('DEBUG: Post-Integration Position', this.position);
 	}
 
 	checkSlope(arenaObjects: any[]) {

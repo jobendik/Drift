@@ -878,15 +878,6 @@ class World {
 
 		this.spawningManager.update(delta);
 
-		// Debug Entity Manager
-		console.log('DEBUG: Entities count:', this.entityManager.entities.length);
-		const playerEntity = this.entityManager.entities.find(e => e === this.player);
-		if (playerEntity) {
-			console.log('DEBUG: Player in EntityManager. Active:', playerEntity.active);
-		} else {
-			console.log('DEBUG: Player NOT in EntityManager');
-		}
-
 		this.entityManager.update(delta);
 
 		// Sync render components (visuals) with entity logic
@@ -1003,8 +994,14 @@ function sync(entity: any, renderComponent: any) {
 }
 
 function syncCamera(entity: any, camera: any) {
-	// Copy the entity's world matrix to camera's matrixWorld
+	// Copy the entity's world matrix to camera's matrixWorld and decompose to update position/rotation
 	camera.matrixWorld.copy(entity.worldMatrix);
+	
+	// Decompose the world matrix to update camera's position and quaternion
+	camera.matrixWorld.decompose(camera.position, camera.quaternion, camera.scale);
+	
+	// Update the local matrix as well
+	camera.matrix.copy(entity.worldMatrix);
 }
 
 export default new World();

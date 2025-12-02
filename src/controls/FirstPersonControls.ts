@@ -104,7 +104,10 @@ class FirstPersonControls extends EventDispatcher {
 		document.addEventListener('keydown', this._keyDownHandler, false);
 		document.addEventListener('keyup', this._keyUpHandler, false);
 
-		document.body.requestPointerLock();
+		// Request pointer lock - may not be granted immediately if not from user gesture
+		document.body.requestPointerLock().catch(err => {
+			console.log('Pointer lock will be requested on first click:', err);
+		});
 
 		return this;
 
@@ -125,6 +128,10 @@ class FirstPersonControls extends EventDispatcher {
 		document.removeEventListener('pointerlockerror', this._pointerlockErrorHandler, false);
 		document.removeEventListener('keydown', this._keyDownHandler, false);
 		document.removeEventListener('keyup', this._keyUpHandler, false);
+
+		if (document.pointerLockElement === document.body) {
+			document.exitPointerLock();
+		}
 
 		return this;
 
@@ -278,13 +285,15 @@ class FirstPersonControls extends EventDispatcher {
 function onMouseDown(this: FirstPersonControls, event: any) {
 
 	if (this.active && event.which === 1) {
-		event.preventDefault();
-
-		// Ensure pointer is locked
+		
+		// Ensure pointer is locked first
 		if (document.pointerLockElement !== document.body) {
+			event.preventDefault();
 			document.body.requestPointerLock();
+			return; // Don't shoot on the lock-requesting click
 		}
 
+		event.preventDefault();
 		this.input.mouseDown = true;
 
 		// Always fire on first click for all weapons
@@ -315,7 +324,6 @@ function onMouseMove(this: FirstPersonControls, event: any) {
 		this.movementY = Math.max(- PI05, Math.min(PI05, this.movementY));
 
 		if (this.owner) {
-			console.log('DEBUG: Mouse Move', this.movementX, this.movementY);
 			this.owner.rotation.fromEuler(0, this.movementX, 0); // yaw
 			this.owner.head.rotation.fromEuler(this.movementY, 0, 0); // pitch
 
@@ -331,7 +339,9 @@ function onMouseMove(this: FirstPersonControls, event: any) {
 
 function onPointerlockChange(this: FirstPersonControls) {
 
-	if (document.pointerLockElement === document.body) {
+	const isLocked = document.pointerLockElement === document.body;
+
+	if (isLocked) {
 
 		this.dispatchEvent({ type: 'lock' });
 
@@ -360,7 +370,6 @@ function onKeyDown(this: FirstPersonControls, event: any) {
 
 			case 38: // up
 			case 87: // w
-				console.log('DEBUG: Forward Key Pressed');
 				this.input.forward = true;
 				break;
 
