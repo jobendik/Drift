@@ -8,8 +8,6 @@ const spread = new Vector3();
 
 /**
 * Class for representing a blaster.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Blaster extends Weapon {
 	public muzzleFireTime: number;

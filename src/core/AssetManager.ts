@@ -1,6 +1,6 @@
 import { LoadingManager, AnimationLoader, AudioLoader, TextureLoader, Mesh, AnimationClip, Texture } from 'three';
 import { Sprite, SpriteMaterial, DoubleSide, AudioListener, PositionalAudio } from 'three';
-import { LineSegments, LineBasicMaterial, MeshBasicMaterial, BufferGeometry, Vector3, PlaneGeometry } from 'three';
+import { LineSegments, LineBasicMaterial, MeshBasicMaterial, BufferGeometry, Vector3, PlaneGeometry, BufferAttribute } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { NavMeshLoader, CostTable } from 'yuka';
 import { CONFIG } from './Config';
@@ -10,7 +10,6 @@ import { CONFIG } from './Config';
 * for loading and parsing all assets from the backend and provide
 * the result in a series of maps.
 *
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class AssetManager {
 
@@ -372,27 +371,61 @@ class AssetManager {
 
 			});
 
-			// add lightmap manually since glTF does not support this type of texture so far
+			// Apply gray gradient material without textures
 
 			const mesh = renderComponent.getObjectByName('level') as Mesh;
 			if (mesh && mesh.material) {
 				const material = mesh.material as MeshBasicMaterial;
-				material.lightMap = textureLoader.load('./textures/lightmap.png');
-				material.lightMap.flipY = false;
-				if (material.map) {
-					material.map.anisotropy = 4;
+				
+				// Remove textures
+				material.map = null;
+				material.lightMap = null;
+				
+				// Apply gray gradient using vertex colors
+				material.vertexColors = true;
+				
+				// Add vertex colors to create gradient effect
+				const geometry = mesh.geometry;
+				if (!geometry.attributes.color) {
+					const positions = geometry.attributes.position;
+				const colors = new Float32Array(positions.count * 3);
+					
+					// Find min and max Y coordinates for gradient
+					let minY = Infinity;
+					let maxY = -Infinity;
+					for (let i = 0; i < positions.count; i++) {
+						const y = positions.getY(i);
+						if (y < minY) minY = y;
+						if (y > maxY) maxY = y;
+					}					const range = maxY - minY;
+					
+					// Apply gradient from dark gray (bottom) to light gray (top)
+					for (let i = 0; i < positions.count; i++) {
+						const y = positions.getY(i);
+						const normalizedY = (y - minY) / range;
+						// Gradient from 0.3 (dark gray) to 0.7 (light gray)
+						const grayValue = 0.3 + normalizedY * 0.4;
+						
+						colors[i * 3] = grayValue;
+						colors[i * 3 + 1] = grayValue;
+						colors[i * 3 + 2] = grayValue;
+					}
+					
+					geometry.setAttribute('color', new BufferAttribute(colors, 3));
 				}
+				
+				material.needsUpdate = true;
 			}
 
-			models.set('level', renderComponent);
+		models.set('level', renderComponent);
 
-		});
+	});
 
-		// blaster, high poly
+	// blaster, high poly
 
-		gltfLoader.load('./models/blaster_high.glb', (gltf) => {
+	gltfLoader.load('./models/blaster_high.glb', (gltf) => {
 
-			const renderComponent = gltf.scene;
+		const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
 			renderComponent.updateMatrix();
 

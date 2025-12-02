@@ -27,8 +27,6 @@ const customTarget = new Vector3();
 
 /**
 * Class for representing the opponent bots in this game.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Enemy extends Vehicle {
 

@@ -2,8 +2,6 @@ import { Item } from './Item.js';
 
 /**
 * A game entity which represents a collectable weapon item.
-*
-* @author {@link https://github.com/robp94|robp94}
 */
 class WeaponItem extends Item {
 

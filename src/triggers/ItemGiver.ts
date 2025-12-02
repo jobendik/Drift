@@ -2,8 +2,6 @@ import { Trigger } from 'yuka';
 
 /**
 * Gives an entity an item if it touches the trigger region.
-*
-* @author {@link https://github.com/robp94|robp94}
 */
 class ItemGiver extends Trigger {
 

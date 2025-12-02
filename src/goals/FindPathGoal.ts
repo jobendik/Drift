@@ -3,9 +3,6 @@ import { Goal } from 'yuka';
 /**
 * Sub-goal for finding the next random location
 * on the map that the enemy is going to seek.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
-* @author {@link https://github.com/robp94|robp94}
 */
 class FindPathGoal extends Goal<any> {
 

@@ -6,8 +6,6 @@ const ray = new Ray();
 
 /**
 * Base class for representing a projectile.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Projectile extends MovingEntity {
 

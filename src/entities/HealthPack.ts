@@ -4,8 +4,6 @@ import { HEALTH_PACK } from '../core/Constants.js';
 
 /**
 * A game entity which represents a collectable health pack.
-*
-* @author {@link https://github.com/robp94|robp94}
 */
 class HealthPack extends Item {
 

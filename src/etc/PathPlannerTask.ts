@@ -2,8 +2,6 @@ import { Task } from 'yuka';
 
 /**
 * Class for representing a single path planning task.
-*
-* @author {@link https://github.com/robp94|robp94}
 */
 class PathPlannerTask extends Task {
 

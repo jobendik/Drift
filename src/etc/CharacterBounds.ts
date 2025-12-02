@@ -7,8 +7,6 @@ const rayBindSpace = new Ray();
 * Class for representing the bounds of an enemy. Its primary purpose is to avoid
 * expensive operations on the actual geometry of an enemy. Hence, intersection test
 * are perfomed with a simple hierarchy of AABBs.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class CharacterBounds {
 

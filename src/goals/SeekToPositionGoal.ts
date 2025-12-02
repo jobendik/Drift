@@ -2,8 +2,6 @@ import { Goal, Vector3 } from 'yuka';
 
 /**
 * Sub-goal for seeking a target position.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class SeekToPositionGoal extends Goal<any> {
 

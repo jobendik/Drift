@@ -5,8 +5,6 @@ import { Enemy } from '../entities/Enemy';
 /**
 * Class for representing the explore goal evaluator. Can be used to compute a score that
 * represents the desirability of the respective top-level goal.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class ExploreEvaluator extends GoalEvaluator<Enemy> {
 

@@ -3,8 +3,6 @@ import { PathPlannerTask } from './PathPlannerTask';
 
 /**
 * Class for asynchronous path finding using Yuka's task features.
-*
-* @author {@link https://github.com/robp94|robp94}
 */
 class PathPlanner {
 

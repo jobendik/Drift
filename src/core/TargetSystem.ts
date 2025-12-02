@@ -4,7 +4,6 @@ const invisibleRecords = new Array();
 /**
 * Class to select a target from the opponents currently in a bot's perceptive memory.
 *
-* @author {@link https://github.com/robp94|robp94}
 */
 class TargetSystem {
 

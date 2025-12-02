@@ -3,8 +3,6 @@ import { WEAPON_STATUS_READY, WEAPON_STATUS_UNREADY, WEAPON_STATUS_EQUIP, WEAPON
 
 /**
 * Base class for all weapons.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Weapon extends GameEntity {
 

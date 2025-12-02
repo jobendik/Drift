@@ -6,8 +6,6 @@ const left = new Vector3(- 1, 0, 0);
 
 /**
 * Sub-goal which makes the enemy dodge from side to side.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class DodgeGoal extends CompositeGoal<any> {
 

@@ -3,8 +3,6 @@ import { Mesh, Group, MeshBasicMaterial, CylinderGeometry, SphereGeometry } from
 
 /**
 * Class with various helper methods.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class SceneUtils {
 

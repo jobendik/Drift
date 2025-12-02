@@ -15,7 +15,6 @@ const offset = new Vector3();
 /**
 * Class to manage all operations specific to weapons and their deployment.
 *
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class WeaponSystem {
 

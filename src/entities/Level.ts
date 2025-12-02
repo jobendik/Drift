@@ -3,7 +3,6 @@ import { GameEntity, BVH } from 'yuka';
 /**
 * Class for representing the level of this game.
 *
-* @author {@link https://github.com/robp94|robp94}
 */
 class Level extends GameEntity {
 

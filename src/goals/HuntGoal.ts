@@ -4,8 +4,6 @@ import { FindPathGoal } from './FindPathGoal';
 
 /**
 * Sub-goal for searching the current target of an enemy.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class HuntGoal extends CompositeGoal<any> {
 

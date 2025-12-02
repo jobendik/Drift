@@ -8,8 +8,6 @@ const spread = new Vector3();
 
 /**
 * Class for representing a assault rifle.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class AssaultRifle extends Weapon {
 

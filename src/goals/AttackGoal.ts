@@ -9,8 +9,6 @@ const targetPosition = new Vector3();
 
 /**
 * Top-Level goal that is used to manage the attack on a target.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class AttackGoal extends CompositeGoal<any> {
 

@@ -15,8 +15,6 @@ const cross = new Vector3();
 
 /**
 * Class for representing the human player of the game.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Player extends MovingEntity {
 

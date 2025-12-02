@@ -1,7 +1,6 @@
 /**
 * This file holds configurable parameters of the game.
 *
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 
 const CONFIG = {

@@ -6,9 +6,6 @@ import { FindPathGoal } from './FindPathGoal';
 /**
 * Top-Level goal that is used to manage the map exploration
 * of the enemy.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
-* @author {@link https://github.com/robp94|robp94}
 */
 class ExploreGoal extends CompositeGoal<any> {
 

@@ -3,7 +3,6 @@ import { GameEntity } from 'yuka';
 /**
 * A game entity which represents a collectable item.
 *
-* @author {@link https://github.com/robp94|robp94}
 */
 class Item extends GameEntity {
 

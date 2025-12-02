@@ -9,8 +9,6 @@ import { CONFIG } from './Config.js';
 /**
 * This class is responsible for (re)spawning enemies.
 *
-* @author {@link https://github.com/robp94|robp94}
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class SpawningManager {
 

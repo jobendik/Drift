@@ -17,8 +17,6 @@ const euler = { x: 0, y: 0, z: 0 };
 
 /**
 * Holds the implementation of the First-Person Controls.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class FirstPersonControls extends EventDispatcher {
 

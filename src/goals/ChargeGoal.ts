@@ -4,8 +4,6 @@ import { FindPathGoal } from './FindPathGoal';
 
 /**
 * Sub-goal for seeking the enemy's target during a battle.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class ChargeGoal extends CompositeGoal<any> {
 

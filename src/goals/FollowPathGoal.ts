@@ -3,9 +3,6 @@ import { BufferGeometry } from 'three';
 
 /**
 * Sub-goal for seeking the defined destination point.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
-* @author {@link https://github.com/robp94|robp94}
 */
 class FollowPathGoal extends Goal<any> {
 

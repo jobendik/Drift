@@ -4,8 +4,6 @@ import { Projectile } from './Projectile';
 
 /**
 * Class for representing a bullet.
-*
-* @author {@link https://github.com/Mugen87|Mugen87}
 */
 class Bullet extends Projectile {
 
