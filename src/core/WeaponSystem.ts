@@ -668,6 +668,12 @@ addNoiseToAim(targetPosition: any): any {
 		*/
 shoot(targetPosition: any): this {
 
+			// Use RIFT weapon system for enemies if available
+			if (this.owner.isPlayer === false && this.owner.riftWeaponSystem) {
+				this.owner._shootRIFT(targetPosition);
+				return this;
+			}
+
 			const currentWeapon = this.currentWeapon;
 			const status = currentWeapon.status;
 

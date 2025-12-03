@@ -72,12 +72,13 @@ export class DecalSystem {
       opacity: 0.9,
       depthWrite: false,
       depthTest: true,
+      side: THREE.DoubleSide // Ensure visible from both sides just in case
     });
 
     const decal = new THREE.Mesh(geometry, mat);
     
     // Position slightly offset from surface to avoid z-fighting
-    decal.position.copy(position).add(normal.clone().multiplyScalar(0.01));
+    decal.position.copy(position).add(normal.clone().multiplyScalar(0.002)); // Reduced offset for tiny scale
     
     // Orient to surface normal
     decal.lookAt(position.clone().add(normal));

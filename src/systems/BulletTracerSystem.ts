@@ -117,7 +117,7 @@ export class BulletTracerSystem {
     instance.mesh.quaternion.copy(quaternion);
     
     // Scale: X = length of ray, Y = thickness (visual width)
-    const thickness = 0.15; // Slightly thinner for cleaner look
+    const thickness = 0.03; // Scaled down thickness (was 0.15)
     instance.mesh.scale.set(distance, thickness, 1);
 
     instance.lifetime = 0;

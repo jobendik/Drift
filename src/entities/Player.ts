@@ -1,4 +1,4 @@
-import { GameEntity, MovingEntity, Vector3, AABB, MathUtils } from 'yuka';
+import { GameEntity, MovingEntity, Vector3, AABB, MathUtils, Ray } from 'yuka';
 import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio, Vector3 as ThreeVector3 } from 'three';
 import { WeaponSystem } from '../core/WeaponSystem';
 import { CONFIG } from '../core/Config';
@@ -281,7 +281,7 @@ class Player extends MovingEntity {
 		if (this.isSprinting) targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
 
 		const isGrounded = this.onGround;
-		console.log('Movement Debug - onGround:', this.onGround, 'hasInput:', hasInput, 'inputDir:', inputDir, 'targetSpeed:', targetSpeed);
+		
 		// Horizontal velocity
 		const horizVel = new Vector3(this.velocity.x, 0, this.velocity.z);
 
@@ -323,7 +323,8 @@ class Player extends MovingEntity {
 		// Apply head bob to camera (head entity)
 		if (this.head) {
 			const motion = Math.sin(this.headBobTime);
-			this.head.position.y = Math.abs(motion) * 0.06;
+			// Head position = base height + bob offset
+			this.head.position.y = this.height + Math.abs(motion) * 0.06;
 			this.head.position.x = motion * 0.08;
 		}
 
@@ -368,80 +369,42 @@ class Player extends MovingEntity {
 		const moveStep = this.velocity.clone().multiplyScalar(delta);
 		const newPos = this.position.clone().add(moveStep);
 
-		// Collision
-		const playerRadius = this.boundingRadius;
-		const stepHeight = PLAYER_CONFIG.stepHeight || 0.5;
-		// Default to on ground if no arena objects to check (fixes movement when arenaObjects is empty)
-		this.onGround = arenaObjects.length === 0 ? true : false;
-
-		this.checkSlope(arenaObjects);
-
-		// Simple box collision against arena objects
-		// Note: Yuka uses a specific coordinate system, ensure compatibility
-		for (const obj of arenaObjects) {
-			// Convert Yuka vector to Three vector for Box3 check if needed, 
-			// but here we can just do simple AABB check if boxes are axis aligned
-			// obj.box is a THREE.Box3
-
-			const minX = newPos.x - playerRadius;
-			const maxX = newPos.x + playerRadius;
-			const minY = newPos.y; // Pivot at feet? Yuka MovingEntity usually pivot at center? 
-			// Drift Player constructor says: boundsDefinition = new AABB(new Vector3(- 0.25, 0, - 0.25), new Vector3(0.25, 1.8, 0.25));
-			// So pivot is at bottom (0).
-			const maxY = newPos.y + this.height;
-			const minZ = newPos.z - playerRadius;
-			const maxZ = newPos.z + playerRadius;
-
-			const box = obj.box; // THREE.Box3
-
-			// Check intersection
-			if (maxX > box.min.x && minX < box.max.x &&
-				maxY > box.min.y && minY < box.max.y &&
-				maxZ > box.min.z && minZ < box.max.z) {
-
-				// Resolve collision
-				// Simplified resolution: push out of shallowest penetration
-				const overlapX = Math.min(maxX - box.min.x, box.max.x - minX);
-				const overlapY = Math.min(maxY - box.min.y, box.max.y - minY);
-				const overlapZ = Math.min(maxZ - box.min.z, box.max.z - minZ);
-
-				if (overlapY < overlapX && overlapY < overlapZ) {
-					// Vertical collision
-					if (this.velocity.y < 0 && newPos.y > box.min.y) {
-						// Landing
-						newPos.y += overlapY;
+		// Ground collision using navMesh (like original Drift)
+		this.onGround = false;
+		
+		if (this.world.navMesh && this.currentRegion) {
+			// Use navMesh-based collision
+			this.currentPosition.copy(newPos);
+			
+			this.currentRegion = this.world.navMesh.clampMovement(
+				this.currentRegion,
+				this.previousPosition,
+				this.currentPosition,
+				newPos // result vector gets clamped
+			);
+			
+			this.previousPosition.copy(newPos);
+			
+			// Adjust height according to ground (like original stayInLevel)
+			if (this.currentRegion) {
+				const distance = this.currentRegion.plane.distanceToPoint(newPos);
+				
+				// Smooth ground following when on/near ground
+				if (this.velocity.y <= 0) {
+					newPos.y -= distance * CONFIG.NAVMESH.HEIGHT_CHANGE_FACTOR;
+					if (Math.abs(distance) < 0.5) {
 						this.velocity.y = 0;
 						this.onGround = true;
-					} else if (this.velocity.y > 0 && newPos.y < box.max.y) {
-						// Ceiling
-						newPos.y -= overlapY;
-						this.velocity.y = 0;
 					}
-				} else if (overlapX < overlapZ) {
-					// X collision
-					if (newPos.x < box.getCenter(new ThreeVector3()).x) {
-						newPos.x -= overlapX;
-					} else {
-						newPos.x += overlapX;
-					}
-					this.velocity.x = 0;
-				} else {
-					// Z collision
-					if (newPos.z < box.getCenter(new ThreeVector3()).z) {
-						newPos.z -= overlapZ;
-					} else {
-						newPos.z += overlapZ;
-					}
-					this.velocity.z = 0;
 				}
 			}
-		}
-
-		// Ground check fallback (if no arena objects or floor is y=0)
-		if (newPos.y <= 0) {
-			newPos.y = 0;
-			this.velocity.y = 0;
-			this.onGround = true;
+		} else {
+			// Fallback: simple ground plane at y=0
+			if (newPos.y <= 0) {
+				newPos.y = 0;
+				this.velocity.y = 0;
+				this.onGround = true;
+			}
 		}
 
 		this.position.copy(newPos);
@@ -520,16 +483,29 @@ class Player extends MovingEntity {
 
 		// Use RIFT weapon system if available
 		if (world.rift && world.rift.weaponSystem) {
-			const camera = world.camera;
 			const onGround = this.velocity.y === 0;
 			const isSprinting = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2) > 10;
 			const velocity = new ThreeVector3(this.velocity.x, this.velocity.y, this.velocity.z);
 
-			const result = world.rift.weaponSystem.shoot(camera, onGround, isSprinting, velocity);
+			// Build obstacle list: level geometry + enemy render components
+			const obstacles: any[] = [];
 
-			if (result.shotFired) {
-				// Shoot was successful - hit detection and damage handled elsewhere
+			// Add level geometry
+			if (world.level && world.level._renderComponent) {
+				obstacles.push(world.level._renderComponent);
+				console.log('Added level to obstacles:', world.level._renderComponent.name);
 			}
+
+			// Add all competitors (enemies) render components
+			world.competitors.forEach((competitor: any) => {
+				if (competitor !== this && competitor.active && competitor._renderComponent) {
+					obstacles.push(competitor._renderComponent);
+					console.log('Added competitor to obstacles:', competitor.name, 'Active:', competitor.active);
+				}
+			});
+
+			console.log('Total obstacles for raycast:', obstacles.length);
+			world.rift.handleShooting(onGround, isSprinting, velocity, obstacles);
 
 			return this;
 		}

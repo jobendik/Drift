@@ -9,6 +9,7 @@ import { HUDManager } from './ui/HUDManager';
 import { KillfeedManager } from './ui/KillfeedManager';
 
 import { AudioManager } from './managers/AudioManager';
+import { MESSAGE_HIT, STATUS_ALIVE } from './core/Constants';
 
 /**
  * RIFT Integration Manager
@@ -44,6 +45,7 @@ export class RIFTIntegration {
   ) {
     this.camera = camera;
     this.raycaster = new THREE.Raycaster();
+    this.raycaster.camera = camera;
 
     // Initialize Audio Manager
     this.audioManager = new AudioManager(camera);
@@ -99,11 +101,28 @@ export class RIFTIntegration {
     }
   }
 
-  private processShot(direction: THREE.Vector3, obstacles: THREE.Object3D[]): void {
-    const muzzlePos = this.weaponSystem.getMuzzleWorldPosition();
+  /**
+   * Process a shot from an enemy (AI) entity
+   * @param camera The enemy's virtual camera
+   * @param direction The shot direction
+   * @param muzzlePosition The world position of the weapon muzzle
+   * @param obstacles Objects to raycast against
+   * @param shooter The enemy entity that fired the shot
+   * @param damage The damage amount
+   */
+  public processEnemyShot(
+    camera: THREE.Camera,
+    direction: THREE.Vector3,
+    muzzlePosition: THREE.Vector3,
+    obstacles: THREE.Object3D[],
+    shooter: any,
+    damage: number
+  ): void {
+    // Raycast from enemy camera
+    const rayOrigin = new THREE.Vector3();
+    camera.getWorldPosition(rayOrigin);
+    this.raycaster.set(rayOrigin, direction);
     
-    // Raycast
-    this.raycaster.set(this.camera.position, direction);
     const intersects = this.raycaster.intersectObjects(obstacles, true);
 
     let endPoint: THREE.Vector3;
@@ -113,6 +132,94 @@ export class RIFTIntegration {
       const hit = intersects[0];
       endPoint = hit.point;
       hitObject = hit.object;
+
+      // Determine material
+      let material = SurfaceMaterial.ROCK;
+      
+      if (hitObject.name.includes('wood') || hitObject.userData.material === 'wood') {
+        material = SurfaceMaterial.WOOD;
+      } else if (hitObject.name.includes('metal') || hitObject.userData.material === 'metal') {
+        material = SurfaceMaterial.METAL;
+      }
+
+      // Spawn effects
+      this.decalSystem.createDecal(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
+      this.particleSystem.spawnMaterialImpact(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
+      this.impactSystem.playSurfaceImpact(hit.point, material);
+
+      // Apply damage if it's an entity
+      let entity = hitObject.userData.entity;
+      if (!entity) {
+        hitObject.traverseAncestors((ancestor: any) => {
+          if (!entity && ancestor.userData.entity) {
+            entity = ancestor.userData.entity;
+          }
+        });
+      }
+
+      if (entity && entity !== shooter) {
+        console.log('Enemy hit entity:', entity.name, 'Health:', entity.health, 'Damage:', damage);
+        
+        // Apply damage via message system
+        if (entity.handleMessage) {
+          const telegram = {
+            message: MESSAGE_HIT,
+            data: { damage: damage, direction: direction },
+            sender: shooter
+          };
+          entity.handleMessage(telegram);
+        }
+
+        this.impactSystem.playBodyImpact(hit.point);
+        this.particleSystem.spawnImpactEffect(hit.point, false);
+      }
+
+    } else {
+      // Miss - extend to max range
+      endPoint = camera.position.clone().add(direction.multiplyScalar(100));
+    }
+
+    // Create tracer
+    this.tracerSystem.createTracer(muzzlePosition, endPoint);
+  }
+
+  private processShot(direction: THREE.Vector3, obstacles: THREE.Object3D[]): void {
+    const muzzlePos = this.weaponSystem.getMuzzleWorldPosition();
+    
+    // Raycast from camera
+    const rayOrigin = new THREE.Vector3();
+    this.camera.getWorldPosition(rayOrigin);
+    this.raycaster.set(rayOrigin, direction);
+    
+    // Raycast against provided obstacles (already filtered by Player.shoot)
+    console.log('=== RAYCAST START ===');
+    console.log('Origin:', rayOrigin);
+    console.log('Direction:', direction);
+    console.log('Obstacles:', obstacles.length);
+    obstacles.forEach((obs, i) => {
+        console.log(`  [${i}] ${obs.name || obs.type} - Children: ${obs.children.length}`);
+    });
+
+    const intersects = this.raycaster.intersectObjects(obstacles, true);
+
+    console.log('Intersects found:', intersects.length);
+    if (intersects.length === 0) {
+        console.log('❌ MISS - No hits detected');
+    } else {
+        console.log('✓ HIT:', intersects[0].object.name, 'at distance', intersects[0].distance.toFixed(2));
+        console.log('  Object type:', intersects[0].object.type);
+        console.log('  Has userData.entity:', !!intersects[0].object.userData.entity);
+    }
+
+    let endPoint: THREE.Vector3;
+    let hitObject: THREE.Object3D | null = null;
+
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      endPoint = hit.point;
+      hitObject = hit.object;
+      
+      console.log('Raycast hit:', hitObject.name, hitObject.userData);
 
       // Determine material
       // In a real implementation, we'd check the object's userData or material type
@@ -135,11 +242,35 @@ export class RIFTIntegration {
       this.impactSystem.playSurfaceImpact(hit.point, material);
 
       // Apply damage if it's an entity
-      // This would connect to the game's damage system
-      if (hitObject.userData.entity) {
-        // hitObject.userData.entity.takeDamage(...)
+      // Check the hit object and all its ancestors for userData.entity
+      let entity = hitObject.userData.entity;
+      if (!entity) {
+        hitObject.traverseAncestors((ancestor: any) => {
+          if (!entity && ancestor.userData.entity) {
+            entity = ancestor.userData.entity;
+          }
+        });
+      }
+
+      if (entity) {
+        console.log('HIT ENTITY:', entity.name, 'Health:', entity.health);
+        const damage = this.weaponSystem.currentConfig.damage;
+        
+        // Apply damage via message system
+        if (entity.handleMessage) {
+            const telegram = {
+                message: MESSAGE_HIT,
+                data: { damage: damage, direction: direction },
+                sender: { isPlayer: true, uuid: 'player' }
+            };
+            entity.handleMessage(telegram);
+        }
+
         this.impactSystem.playBodyImpact(hit.point);
-        this.hudManager.showHitmarker(false); // false = not a kill
+        
+        // Check if kill (assuming entity has health)
+        const isKill = entity.health <= 0;
+        this.hudManager.showHitmarker(isKill);
         
         // Also spawn blood/impact effect for body hit
         this.particleSystem.spawnImpactEffect(hit.point, false);

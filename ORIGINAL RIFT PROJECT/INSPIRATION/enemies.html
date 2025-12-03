@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>RIFT Mobile Bestiary</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI Overlay */
+        #ui-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 180px;
+            pointer-events: none;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 30px;
+        }
+
+        #enemy-name {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+
+        #enemy-desc {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-align: center;
+        }
+
+        .nav-btn {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 15px 20px;
+            font-size: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+        }
+
+        .nav-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(0.9);
+        }
+
+        #btn-left {
+            left: 20px;
+        }
+
+        #btn-right {
+            right: 20px;
+        }
+
+        /* Guide text */
+        #swipe-guide {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 12px;
+            pointer-events: none;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.2;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+
+            100% {
+                opacity: 0.2;
+            }
+        }
+
+        /* Boss Label */
+        .boss-tag {
+            color: #FF0044;
+            border: 1px solid #FF0044;
+            padding: 2px 6px;
+            font-size: 10px;
+            margin-right: 5px;
+            vertical-align: middle;
+            display: none;
+            /* Hidden by default */
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="swipe-guide">&lt; SWIPE TO BROWSE &gt;</div>
+
+    <div id="ui-container">
+        <button id="btn-left" class="nav-btn">&#10094;</button>
+        <div id="enemy-name"><span id="boss-badge" class="boss-tag">BOSS</span><span id="name-text">LOADING...</span>
+        </div>
+        <div id="enemy-desc">...</div>
+        <button id="btn-right" class="nav-btn">&#10095;</button>
+    </div>
+
+    <!-- Import Three.js -->
+    <script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x020202, 5, 25);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.5, 7.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        // --- POST PROCESSING ---
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+        const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloom.strength = 1.6;
+        bloom.radius = 0.5;
+        bloom.threshold = 0.1;
+        composer.addPass(bloom);
+
+        // Floor
+        const gridHelper = new THREE.GridHelper(80, 80, 0x222222, 0x050505);
+        scene.add(gridHelper);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x222222);
+        scene.add(ambientLight);
+
+        // --- CAROUSEL SETUP ---
+        const carouselGroup = new THREE.Group();
+        scene.add(carouselGroup);
+
+        const spacing = 5.0;
+        const enemies = [];
+        const enemyData = [
+            { name: "GRUNT", desc: "Light Infantry // Wireframe", color: "#00FFFF" },
+            { name: "SHOOTER", desc: "Ranged Unit // Watcher", color: "#9D00FF" },
+            { name: "HEAVY", desc: "Tank Unit // The Stack", color: "#FF0000" },
+            { name: "SPLICER", desc: "Glitch Unit // Fragmented", color: "#FFFF00" },
+            { name: "SWARMER", desc: "Horde Unit // Simple", color: "#FF5500" },
+            { name: "ARTILLERY", desc: "Siege Unit // Core Shell", color: "#FFFFFF" },
+            { name: "VIPER", desc: "Sniper // Satellite", color: "#00FF88" },
+            { name: "BULWARK", desc: "Shielded // The Halo", color: "#0066FF" },
+            { name: "TITAN", desc: "Elite Heavy // The Void", color: "#FF0044" },
+            { name: "SPECTRE", desc: "Stealth Unit // Ghost", color: "#5555FF" }, // NEW
+            { name: "RAZOR", desc: "Melee Unit // Spiked", color: "#FF00FF" }, // NEW
+            { name: "THE SERAPH", desc: "Aerial Boss // Winged", color: "#FFCC00", isBoss: true },
+            { name: "THE HIVE", desc: "Carrier Boss // Swarm Host", color: "#00FF22", isBoss: true },
+            { name: "THE CONSTRUCT", desc: "Giga-Mech // Floating Parts", color: "#FF4400", isBoss: true },
+            { name: "THE OMEGA", desc: "FINAL BOSS // Godform", color: "#FFFFFF", isBoss: true } // NEW
+        ];
+
+        // Helper Material
+        function createNeonMat(color, wireframe = false, transparent = false, opacity = 1.0) {
+            return new THREE.MeshBasicMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: wireframe ? 2 : 1.2,
+                wireframe: wireframe,
+                transparent: transparent,
+                opacity: opacity,
+                side: THREE.DoubleSide
+            });
+        }
+
+        // --- ENEMY GENERATORS ---
+
+        // 1-9 (Existing) - Keeping these concise
+        function createGrunt() {
+            const group = new THREE.Group();
+            const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 8), createNeonMat(0x00FFFF, true));
+            group.add(mesh);
+            group.userData.update = (t) => { mesh.rotation.y = t; mesh.position.y = Math.sin(t * 2) * 0.1; };
+            return group;
+        }
+        function createShooter() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.7, 4, 8), createNeonMat(0x9D00FF));
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), createNeonMat(0xB040FF));
+            head.position.y = 0.6;
+            const eye = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.1), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+            eye.position.z = 0.21; head.add(eye);
+            group.add(body, head);
+            group.userData.update = (t) => { body.position.y = Math.sin(t) * 0.1; head.rotation.y = Math.sin(t * 1.5) * 0.8; head.position.y = 0.6 + Math.sin(t * 3) * 0.05; };
+            return group;
+        }
+        function createHeavy() {
+            const group = new THREE.Group();
+            const mat = createNeonMat(0xFF0000);
+            const segs = [0, 1, 2].map(i => {
+                const m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16), mat);
+                m.position.y = (i - 1) * 0.45; group.add(m); return m;
+            });
+            group.userData.update = (t) => {
+                const b = Math.sin(t * 2) * 0.05; segs[0].position.y = -0.5 - b; segs[2].position.y = 0.5 + b; group.rotation.y = t * 0.2;
+            };
+            return group;
+        }
+        function createSplicer() {
+            const group = new THREE.Group();
+            const count = 40;
+            const imesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), createNeonMat(0xFFFF00), count);
+            const dummy = new THREE.Object3D(); const origins = [];
+            for (let i = 0; i < count; i++) {
+                dummy.position.set((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 0.6);
+                dummy.rotation.set(Math.random(), Math.random(), Math.random()); dummy.updateMatrix();
+                imesh.setMatrixAt(i, dummy.matrix); origins.push(dummy.position.clone());
+            }
+            group.add(imesh);
+            group.userData.update = (t) => {
+                for (let i = 0; i < count; i++) {
+                    const o = origins[i];
+                    dummy.position.set(o.x + (Math.random() - 0.5) * 0.1, o.y + (Math.random() - 0.5) * 0.1, o.z);
+                    dummy.scale.setScalar(Math.random() > 0.95 ? 2 : 1); dummy.updateMatrix(); imesh.setMatrixAt(i, dummy.matrix);
+                }
+                imesh.instanceMatrix.needsUpdate = true;
+            };
+            return group;
+        }
+        function createSwarmer() {
+            const group = new THREE.Group();
+            const pos = [{ x: 0, y: 0, z: 0 }, { x: 0.35, y: -0.2, z: 0.2 }, { x: -0.35, y: 0.1, z: -0.1 }];
+            const meshes = pos.map(p => {
+                const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.4, 4, 8), createNeonMat(0xFF5500));
+                m.position.set(p.x, p.y, p.z); group.add(m); return m;
+            });
+            group.userData.update = (t) => { group.position.y = Math.sin(t * 4) * 0.2; meshes.forEach((m, i) => m.position.x = pos[i].x + Math.sin(t * 10 + i) * 0.02); };
+            return group;
+        }
+        function createArtillery() {
+            const group = new THREE.Group();
+            const shell = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.9, 4, 16), createNeonMat(0xFFFFFF, false, true, 0.15));
+            const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+            group.add(shell, core);
+            group.userData.update = (t) => {
+                let p = 1 + Math.sin(t * 3) * 0.3; core.scale.setScalar(p); core.rotation.y += 0.05; shell.rotation.y -= 0.01; group.position.y = Math.sin(t) * 0.1;
+            };
+            return group;
+        }
+        function createViper() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 1.2, 4, 8), createNeonMat(0x00FF88));
+            body.rotation.z = Math.PI / 6;
+            const rGeo = new THREE.TorusGeometry(0.3, 0.01, 3, 16); const rMat = createNeonMat(0x00FF88);
+            const r1 = new THREE.Mesh(rGeo, rMat); r1.position.y = 0.3;
+            const r2 = new THREE.Mesh(rGeo, rMat); r2.position.y = -0.3;
+            body.add(r1, r2); group.add(body);
+            group.userData.update = (t) => { group.position.y = Math.sin(t) * 0.1; r1.rotation.x = t * 2; r1.rotation.y = t; r2.rotation.x = -t * 2; r2.rotation.y = -t; };
+            return group;
+        }
+        function createBulwark() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.8, 4, 8), createNeonMat(0x0066FF));
+            const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.1, 32, 1, true), createNeonMat(0x0066FF, false, true, 0.3));
+            shield.rotation.x = Math.PI / 2; shield.position.z = 0.5;
+            const cross = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 0.05), createNeonMat(0xFFFFFF));
+            shield.add(cross, cross.clone().rotateZ(Math.PI / 2));
+            group.add(body, shield);
+            group.userData.update = (t) => { group.position.y = Math.sin(t * 0.5) * 0.05; shield.rotation.z = t * 0.5; };
+            return group;
+        }
+        function createTitan() {
+            const group = new THREE.Group();
+            const core = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.2, 4, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            const rim = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.3, 4, 8), createNeonMat(0xFF0044, true));
+            const rGrp = new THREE.Group();
+            for (let i = 0; i < 8; i++) {
+                const bit = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), createNeonMat(0xFF0044));
+                const a = (i / 8) * Math.PI * 2; bit.position.set(Math.cos(a) * 0.9, 0, Math.sin(a) * 0.9); rGrp.add(bit);
+            }
+            group.add(core, rim, rGrp);
+            group.userData.update = (t) => {
+                group.position.y = Math.sin(t * 0.5) * 0.2; rim.rotation.y = -t * 0.2; rGrp.rotation.set(0.4, t, t * 0.3);
+                const s = 1 + Math.sin(t) * 0.05; group.scale.set(s, s, s);
+            };
+            return group;
+        }
+
+        // --- NEW ENEMIES ---
+
+        // 10. SPECTRE (Stealth)
+        function createSpectre() {
+            const group = new THREE.Group();
+            // Ghostly body - multiple transparent layers
+            const geo = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8);
+            const matOuter = createNeonMat(0x5555FF, false, true, 0.15);
+            const matInner = createNeonMat(0xAAAAFF, true, true, 0.3);
+
+            const bodyOuter = new THREE.Mesh(geo, matOuter);
+            const bodyInner = new THREE.Mesh(geo, matInner);
+            bodyInner.scale.set(0.8, 0.8, 0.8);
+
+            group.add(bodyOuter, bodyInner);
+
+            group.userData.update = (t) => {
+                // Hover
+                group.position.y = Math.sin(t) * 0.15;
+
+                // Phasing effect (Opacity Pulse)
+                const phase = 0.2 + (Math.sin(t * 3) + 1) * 0.15;
+                matOuter.opacity = phase;
+
+                // Slight distortion/wiggle
+                group.rotation.y = Math.sin(t * 0.5) * 0.2;
+            };
+            return group;
+        }
+
+        // 11. RAZOR (Melee)
+        function createRazor() {
+            const group = new THREE.Group();
+
+            // Core
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), createNeonMat(0xFF00FF));
+
+            // Spikes (Cones) arranged in a ring
+            const spikeGroup = new THREE.Group();
+            const spikeCount = 8;
+            const spikeGeo = new THREE.ConeGeometry(0.08, 0.4, 4);
+            const spikeMat = createNeonMat(0xFF00FF);
+
+            for (let i = 0; i < spikeCount; i++) {
+                const spike = new THREE.Mesh(spikeGeo, spikeMat);
+                const angle = (i / spikeCount) * Math.PI * 2;
+                // Position on equator
+                spike.position.set(Math.cos(angle) * 0.35, Math.sin(angle) * 0.35, 0);
+                // Rotate to point outward
+                spike.rotation.z = angle - Math.PI / 2;
+                spikeGroup.add(spike);
+            }
+
+            // Orbiting blades
+            const bladeGeo = new THREE.BoxGeometry(1.2, 0.05, 0.1);
+            const blade = new THREE.Mesh(bladeGeo, createNeonMat(0xFFFFFF));
+
+            group.add(core, spikeGroup, blade);
+
+            group.userData.update = (t) => {
+                group.position.y = Math.sin(t * 5) * 0.05; // Vibrates
+
+                // Aggressive spinning
+                spikeGroup.rotation.z = -t * 8;
+                blade.rotation.z = t * 10;
+                blade.rotation.y = t * 2;
+
+                // Tilt forward as if attacking
+                group.rotation.x = 0.5;
+            };
+            return group;
+        }
+
+
+        // --- BOSSES ---
+
+        function createSeraph() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.5, 4, 16), createNeonMat(0xFFCC00));
+            const halo = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 4, 32), createNeonMat(0xFFFFFF));
+            halo.rotation.x = Math.PI / 2; halo.position.y = 1.0;
+            const wingGroup = new THREE.Group(); const wingMat = createNeonMat(0xFFCC00, true);
+            for (let i = 0; i < 4; i++) {
+                const bL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 1.5 + i * 0.5, 4, 8), wingMat);
+                bL.rotation.z = Math.PI / 4 + (i * 0.15); bL.position.set(-0.8 - (i * 0.3), 0.5 + (i * 0.2), 0);
+                const bR = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 1.5 + i * 0.5, 4, 8), wingMat);
+                bR.rotation.z = -(Math.PI / 4 + (i * 0.15)); bR.position.set(0.8 + (i * 0.3), 0.5 + (i * 0.2), 0);
+                wingGroup.add(bL, bR);
+            }
+            group.add(body, halo, wingGroup);
+            group.userData.update = (t) => {
+                group.position.y = 1.2 + Math.sin(t * 1.5) * 0.2; wingGroup.rotation.y = Math.sin(t) * 0.2; halo.rotation.z = t * 0.5;
+            };
+            return group;
+        }
+
+        function createHive() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), createNeonMat(0x00FF22, true));
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), new THREE.MeshBasicMaterial({ color: 0x003300 }));
+            body.add(core);
+            const drones = new THREE.Group();
+            const dGeo = new THREE.ConeGeometry(0.05, 0.15, 4); const dMat = createNeonMat(0x00FF22);
+            for (let i = 0; i < 30; i++) {
+                const d = new THREE.Mesh(dGeo, dMat);
+                d.position.setFromSphericalCoords(1.5 + Math.random() * 0.5, Math.random() * Math.PI, Math.random() * Math.PI * 2);
+                d.lookAt(0, 0, 0);
+                d.userData = { spd: 0.02 + Math.random() * 0.03, ax: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize() };
+                drones.add(d);
+            }
+            group.add(body, drones);
+            group.userData.update = (t) => {
+                group.position.y = 1.5 + Math.sin(t * 0.8) * 0.1; body.rotation.y = t * 0.1; core.scale.setScalar(0.8 + Math.sin(t * 5) * 0.1);
+                drones.children.forEach(d => { d.position.applyAxisAngle(d.userData.ax, d.userData.spd); d.lookAt(0, 0, 0); });
+            };
+            return group;
+        }
+
+        function createConstruct() {
+            const group = new THREE.Group();
+            const c = 0xFF4400;
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.8), createNeonMat(c));
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), createNeonMat(c)); head.position.y = 1.2;
+            const fG = new THREE.BoxGeometry(0.6, 0.6, 0.6); const fM = createNeonMat(c, true);
+            const lF = new THREE.Mesh(fG, fM); lF.position.set(-1.2, 0, 0.5);
+            const rF = new THREE.Mesh(fG, fM); rF.position.set(1.2, 0, 0.5);
+            group.add(torso, head, lF, rF);
+            group.userData.update = (t) => {
+                group.position.y = 1.0 + Math.sin(t) * 0.1; head.rotation.y = Math.sin(t * 0.5) * 0.5;
+                lF.position.z = 0.5 + Math.sin(t * 3) * 0.4; rF.position.z = 0.5 + Math.cos(t * 3) * 0.4;
+                lF.rotation.x = t * 0.2; rF.rotation.x = t * 0.2;
+            };
+            return group;
+        }
+
+        // 12. THE OMEGA (Final Boss)
+        function createOmega() {
+            const group = new THREE.Group();
+
+            // Central Monolith
+            const monoGeo = new THREE.CylinderGeometry(0.6, 0.4, 2.5, 6);
+            const monoMat = createNeonMat(0xFFFFFF); // Pure white
+            const mono = new THREE.Mesh(monoGeo, monoMat);
+
+            // Floating "Crown" rings
+            const ringGeo = new THREE.TorusGeometry(1.2, 0.05, 4, 6); // Hexagonal rings
+            const ringMat = createNeonMat(0xFFFFFF, false, true, 0.8);
+            const ring1 = new THREE.Mesh(ringGeo, ringMat);
+            const ring2 = new THREE.Mesh(ringGeo, ringMat);
+            const ring3 = new THREE.Mesh(ringGeo, ringMat);
+
+            // Orbital Satellites (Eyes)
+            const satGroup = new THREE.Group();
+            const satGeo = new THREE.OctahedronGeometry(0.2);
+            for (let i = 0; i < 3; i++) {
+                const sat = new THREE.Mesh(satGeo, monoMat);
+                const a = (i / 3) * Math.PI * 2;
+                sat.position.set(Math.cos(a) * 1.8, 0, Math.sin(a) * 1.8);
+                satGroup.add(sat);
+            }
+
+            group.add(mono, ring1, ring2, ring3, satGroup);
+
+            group.userData.update = (t) => {
+                // Majestic slow hover
+                group.position.y = 1.5 + Math.sin(t * 0.5) * 0.1;
+
+                // Rings rotating on different axes (Gyroscope feel)
+                ring1.rotation.x = t * 0.2;
+                ring1.rotation.y = t * 0.1;
+
+                ring2.rotation.x = t * 0.3 + 1;
+                ring2.rotation.y = -t * 0.2;
+
+                ring3.rotation.x = -t * 0.2 + 2;
+                ring3.rotation.z = t * 0.1;
+
+                // Satellites orbit
+                satGroup.rotation.y = -t * 0.5;
+                satGroup.children.forEach(s => s.rotation.y += 0.1);
+
+                // Pulse brightness
+                monoMat.emissiveIntensity = 1 + Math.sin(t * 2) * 0.5;
+            };
+            return group;
+        }
+
+
+        // --- INITIALIZATION ---
+        const factories = [
+            createGrunt, createShooter, createHeavy,
+            createSplicer, createSwarmer, createArtillery,
+            createViper, createBulwark, createTitan,
+            createSpectre, createRazor,
+            createSeraph, createHive, createConstruct, createOmega
+        ];
+
+        factories.forEach((createFn, index) => {
+            const enemy = createFn();
+            enemy.position.x = index * spacing;
+            enemy.position.y = 1;
+
+            // Scaling logic
+            if (index >= 11) { // Bosses (Seraph starts at 11 now)
+                enemy.scale.set(1.5, 1.5, 1.5);
+            }
+
+            carouselGroup.add(enemy);
+            enemies.push(enemy);
+        });
+
+        // --- INTERACTION LOGIC ---
+        let currentIndex = 0;
+        let targetX = 0;
+
+        function updateUI() {
+            const data = enemyData[currentIndex];
+            const nameEl = document.getElementById('name-text');
+            const bossBadge = document.getElementById('boss-badge');
+            const descEl = document.getElementById('enemy-desc');
+            const nameContainer = document.getElementById('enemy-name');
+
+            nameEl.innerText = data.name;
+            nameContainer.style.color = data.color;
+            nameContainer.style.textShadow = `0 0 20px ${data.color}`;
+
+            if (data.isBoss) {
+                bossBadge.style.display = "inline-block";
+                bossBadge.style.borderColor = data.color;
+                bossBadge.style.color = data.color;
+            } else {
+                bossBadge.style.display = "none";
+            }
+
+            descEl.innerText = data.desc;
+            descEl.style.color = data.color;
+            descEl.style.opacity = 0.8;
+        }
+
+        function nextEnemy() {
+            if (currentIndex < enemies.length - 1) {
+                currentIndex++;
+                targetX = -currentIndex * spacing;
+                updateUI();
+            }
+        }
+
+        function prevEnemy() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                targetX = -currentIndex * spacing;
+                updateUI();
+            }
+        }
+
+        // Touch Handling (Swipe)
+        let touchStartX = 0;
+        window.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, false);
+        window.addEventListener('touchend', e => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchStartX - touchEndX;
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) nextEnemy();
+                else prevEnemy();
+            }
+        }, false);
+
+        // Button Handling
+        document.getElementById('btn-right').addEventListener('click', nextEnemy);
+        document.getElementById('btn-left').addEventListener('click', prevEnemy);
+
+        // Keyboard
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextEnemy();
+            if (e.key === 'ArrowLeft') prevEnemy();
+        });
+
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initial UI
+        updateUI();
+
+        // --- ANIMATION LOOP ---
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.03;
+
+            // Smooth Camera/Carousel Movement
+            carouselGroup.position.x += (targetX - carouselGroup.position.x) * 0.1;
+
+            // Animate Enemies
+            enemies.forEach((enemy, idx) => {
+                if (enemy.userData.update) enemy.userData.update(time);
+
+                // Dynamic Scaling
+                const dist = Math.abs(idx - currentIndex);
+                let baseScale = (idx >= 11) ? 1.5 : 1.0; // Bosses are larger (index 11+)
+                let targetScale = (dist === 0) ? baseScale : baseScale * 0.8;
+
+                const currentScale = enemy.scale.x;
+                const newScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.1);
+                enemy.scale.set(newScale, newScale, newScale);
+            });
+
+            composer.render();
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>

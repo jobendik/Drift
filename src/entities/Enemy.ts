@@ -9,6 +9,9 @@ import { CONFIG } from '../core/Config';
 import { GetHealthEvaluator } from '../evaluators/GetHealthEvaluator';
 import { GetWeaponEvaluator } from '../evaluators/GetWeaponEvaluator';
 import World from '../core/World';
+import { WeaponSystem as RIFTWeaponSystem } from '../systems/WeaponSystem';
+import { Camera as ThreeCamera, PerspectiveCamera, Vector3 as ThreeVector3 } from 'three';
+import { WeaponType } from '../types/weapons';
 
 const positiveWeightings = new Array();
 const weightings = [0, 0, 0, 0];
@@ -86,6 +89,10 @@ class Enemy extends Vehicle {
 
 	public weaponSystem: WeaponSystem;
 	public weaponSelectionRegulator: Regulator;
+
+	// RIFT Integration
+	public riftWeaponSystem: RIFTWeaponSystem | null = null;
+	public enemyCamera: ThreeCamera | null = null; // Virtual camera for weapon rendering
 
 	public pathHelper: any;
 	public hitboxHelper: any;
@@ -237,6 +244,9 @@ class Enemy extends Vehicle {
 		this.bounds.init();
 		this.weaponSystem.init();
 
+		// Initialize RIFT weapon system for this enemy
+		this._initRIFTWeaponSystem();
+
 		return this;
 
 	}
@@ -335,6 +345,11 @@ class Enemy extends Vehicle {
 			// so this call will change the actual heading/orientation of the enemy
 
 			this.weaponSystem.update(delta);
+
+			// Update RIFT weapon system (animations, muzzle flash, etc.)
+			if (this.riftWeaponSystem && this.enemyCamera) {
+				this.riftWeaponSystem.update(delta, { x: 0, y: 0 }, false, this.currentTime);
+			}
 
 		}
 
@@ -871,6 +886,159 @@ class Enemy extends Vehicle {
 
 		return super.rotateTo(customTarget, delta, tolerance);
 
+	}
+
+	/**
+	* Initializes the RIFT weapon system for this enemy.
+	* Creates a virtual camera and weapon renderer attached to enemy's head.
+	*
+	* @return {Enemy} A reference to this game entity.
+	*/
+	private _initRIFTWeaponSystem(): this {
+		// Create a virtual camera for this enemy (used for weapon rendering)
+		this.enemyCamera = new PerspectiveCamera(75, 1, 0.1, 1000);
+
+		// Position camera at enemy's head by finding the head bone in the skeleton
+		if (this._renderComponent) {
+			// Try to find a head bone in the skeleton
+			let headBone: any = null;
+			this._renderComponent.traverse((child: any) => {
+				if (child.isBone && child.name.toLowerCase().includes('head')) {
+					headBone = child;
+				}
+			});
+
+			// If we found a head bone, attach camera to it
+			// Otherwise attach to the root render component
+			const attachPoint = headBone || this._renderComponent;
+			attachPoint.add(this.enemyCamera);
+			
+			// Position camera slightly forward and up if attached to root
+			if (!headBone) {
+				this.enemyCamera.position.set(0, CONFIG.BOT.HEAD_HEIGHT, 0.5);
+			}
+		}
+
+		// Create RIFT weapon system for this enemy
+		this.riftWeaponSystem = new RIFTWeaponSystem(
+			this.world.scene,
+			this.enemyCamera,
+			this.world.assetManager,
+			this.world.rift.audioManager
+		);
+
+		// Set up shell ejection callback
+		this.riftWeaponSystem.setShellEjectCallback((pos: ThreeVector3, dir: ThreeVector3) => {
+			this.world.rift.particleSystem.spawnShellCasing(pos, dir);
+		});
+
+		// Start with a random weapon
+		const weapons = [WeaponType.AK47, WeaponType.M4, WeaponType.Scar, WeaponType.Shotgun, WeaponType.LMG, WeaponType.Pistol];
+		const randomWeapon = weapons[Math.floor(Math.random() * weapons.length)];
+		const weaponIndex = Object.values(WeaponType).indexOf(randomWeapon);
+		this.riftWeaponSystem.switchWeapon(weaponIndex);
+
+		// Hide old Drift weapon models (blaster, shotgun, assault rifle)
+		if (this.weaponSystem && this.weaponSystem.renderComponents) {
+			const oldComponents = [
+				this.weaponSystem.renderComponents.blaster,
+				this.weaponSystem.renderComponents.shotgun,
+				this.weaponSystem.renderComponents.assaultRifle
+			];
+			
+			for (const component of oldComponents) {
+				if (component && component.mesh) {
+					component.mesh.visible = false;
+				}
+			}
+		}
+
+		console.log(`Enemy ${this.name} initialized with RIFT weapon system, weapon: ${randomWeapon}`);
+
+		return this;
+	}
+
+	/**
+	* Shoots using the RIFT weapon system at the target position.
+	* This creates proper muzzle flash, tracers, and impacts.
+	*
+	* @param {Vector3} targetPosition - The target position in Yuka space.
+	* @return {Enemy} A reference to this game entity.
+	*/
+	private _shootRIFT(targetPosition: Vector3): this {
+		if (!this.riftWeaponSystem || !this.enemyCamera) return this;
+
+		// Update camera orientation to match enemy
+		if (this._renderComponent) {
+			this._renderComponent.updateMatrixWorld(true);
+			this.enemyCamera.updateMatrixWorld(true);
+			
+			// Make camera look at target
+			const targetThree = new ThreeVector3(targetPosition.x, targetPosition.y, targetPosition.z);
+			this.enemyCamera.lookAt(targetThree);
+		}
+
+		// Shoot using RIFT weapon system
+		const result = this.riftWeaponSystem.shoot(
+			this.enemyCamera,
+			true, // onGround
+			false, // isSprinting
+			new ThreeVector3(this.velocity.x, this.velocity.y, this.velocity.z)
+		);
+
+		if (result.shotFired) {
+			// Build obstacle list (same as Player)
+			const obstacles: any[] = [];
+			
+			// Add level
+			if (this.world.level && this.world.level._renderComponent) {
+				obstacles.push(this.world.level._renderComponent);
+			}
+
+			// Add player
+			if (this.world.player && this.world.player._renderComponent) {
+				obstacles.push(this.world.player._renderComponent);
+			}
+
+			// Add other competitors (excluding self)
+			for (const competitor of this.world.competitors) {
+				if (competitor !== this && competitor._renderComponent && competitor.status === STATUS_ALIVE) {
+					obstacles.push(competitor._renderComponent);
+				}
+			}
+
+			// Get muzzle position from RIFT weapon system
+			const muzzlePos = this.riftWeaponSystem.getMuzzleWorldPosition();
+			const config = this.riftWeaponSystem.currentConfig;
+			const damage = config.damage;
+
+			// Process shot(s) with RIFT integration
+			if (result.directions) {
+				// Shotgun - multiple pellets
+				for (const direction of result.directions) {
+					this.world.rift.processEnemyShot(
+						this.enemyCamera,
+						direction,
+						muzzlePos,
+						obstacles,
+						this,
+						damage
+					);
+				}
+			} else {
+				// Single shot
+				this.world.rift.processEnemyShot(
+					this.enemyCamera,
+					result.direction,
+					muzzlePos,
+					obstacles,
+					this,
+					damage
+				);
+			}
+		}
+
+		return this;
 	}
 
 	/**

@@ -7,7 +7,7 @@
 		<link rel="stylesheet" type="text/css" href="/style/rift-hud.css">
 		<link rel="shortcut icon" type="image/x-icon" href="/textures/drift_logo.png">
 		<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-		<script type="module" crossorigin src="/assets/index-BmJi1CyR.js"></script>
+		<script type="module" crossorigin src="/assets/index-BtfbClOr.js"></script>
 	</head>
 <body>
 
@@ -50,66 +50,69 @@
 	</section>
 
 	<!-- RIFT HUD Elements -->
-	<div id="rift-hud">
-		<!-- Health Bar -->
-		<div id="health-container">
-			<div id="health-icon">❤</div>
-			<div id="health-bar-wrapper">
-				<div id="health-bar"></div>
-			</div>
-			<span id="health-text">100</span>
-		</div>
-		
-		<!-- Armor Bar -->
-		<div id="armor-container">
-			<div id="armor-icon">🛡</div>
-			<div id="armor-bar-wrapper">
-				<div id="armor-bar"></div>
-			</div>
-			<span id="armor-text">0</span>
-		</div>
-		
-		<!-- Ammo Display -->
-		<div id="ammo-container">
-			<span id="ammo-current">30</span>
-			<span id="ammo-separator">/</span>
-			<span id="ammo-reserve">120</span>
-		</div>
-		<div id="weapon-name">M4</div>
-		
-		<!-- Crosshair -->
-		<div id="crosshair">
-			<div id="crosshair-top"></div>
-			<div id="crosshair-bottom"></div>
-			<div id="crosshair-left"></div>
-			<div id="crosshair-right"></div>
-			<div id="crosshair-center"></div>
-		</div>
-		
-		<!-- Hitmarker -->
-		<div id="hitmarker"></div>
-		
-		<!-- Kill Icon -->
-		<div id="kill-icon">☠</div>
-		
-		<!-- Damage Vignette -->
-		<div id="damage-vignette"></div>
-		
-		<!-- Damage Direction Indicators -->
-		<div id="damage-indicator-top" class="damage-indicator"></div>
-		<div id="damage-indicator-bottom" class="damage-indicator"></div>
-		<div id="damage-indicator-left" class="damage-indicator"></div>
-		<div id="damage-indicator-right" class="damage-indicator"></div>
-		
-		<!-- Killfeed -->
+	<!-- RIFT HUD Elements -->
+	<div id="hud">
+		<!-- VIGNETTE SYSTEM -->
+		<div id="vignette-impact-flash"></div>
+		<div id="vignette-damage-pulse"></div>
+		<div id="vignette-critical"></div>
+		<div id="damage-overlay"></div>
+		<div id="sniper-scope"></div>
+
+		<!-- TOP RIGHT -->
 		<div id="killfeed"></div>
-		
-		<!-- Reload Indicator -->
-		<div id="reload-indicator">RELOADING...</div>
-		
-		<!-- Wave/Score Display -->
+		<div id="multikill-display"></div>
+		<div id="streak-display"></div>
+
+		<!-- TOP CENTER -->
 		<div id="wave-display"></div>
+		<div id="enemies-remaining"></div>
 		<div id="score-display">0</div>
+		<div id="message-display"></div>
+
+		<!-- CENTER -->
+		<div id="crosshair">
+			<div id="cross-top"></div>
+			<div id="cross-bottom"></div>
+			<div id="cross-left"></div>
+			<div id="cross-right"></div>
+		</div>
+		<div id="hitmarker"><img src="/assets/images/hitmarker.png" alt="hit"></div>
+		<div id="kill-icon">☠</div>
+		<div id="headshot-icon">⌖</div>
+		<div id="reload-indicator">RELOADING...</div>
+		<div id="powerup-indicator"></div>
+
+		<!-- BOTTOM LEFT -->
+		<div id="status-bars">
+			<div id="health-wrapper">
+				<div class="icon">❤</div>
+				<div class="bar-bg">
+					<div id="health-bar-mask"></div>
+				</div>
+				<span id="health-text-value">100</span>
+			</div>
+			<div id="armor-wrapper">
+				<div class="icon">🛡</div>
+				<div class="bar-bg">
+					<div id="armor-bar-mask"></div>
+				</div>
+				<span id="armor-text-value">0</span>
+			</div>
+			<div id="stamina-wrapper">
+				<div class="icon">⚡</div>
+				<div class="bar-bg">
+					<div id="stamina-bar-mask"></div>
+				</div>
+				<span id="stamina-text-value">100</span>
+			</div>
+		</div>
+
+		<!-- BOTTOM RIGHT -->
+		<div id="weapon-info">
+			<div id="weapon-name">AK-47</div>
+			<div id="ammo-display">30 / 90</div>
+		</div>
 	</div>
 
 </body>

@@ -67,6 +67,7 @@ class World {
 	public useFPSControls: boolean;
 
 	public player!: Player;
+	public level!: Level;
 
 	public enemyCount: number;
 	public competitors: Array<any>;
@@ -334,8 +335,8 @@ class World {
 
 		// camera
 
-		this.camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-		this.camera.position.set(0, 75, 100);
+		this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.001, 1000);
+		this.camera.position.set(0, 7.5, 10);
 		this.camera.add(this.assetManager.listener);
 		this.scene.add(this.camera); // Fix: Add camera to scene so its children (weapons) are rendered
 
@@ -410,6 +411,13 @@ class World {
 			const enemy = new Enemy(this);
 			enemy.name = 'Bot' + i;
 			enemy.setRenderComponent(renderComponent, sync);
+
+			// Link render component to entity for raycasting
+			renderComponent.userData.entity = enemy;
+			// Set userData on ALL children (not just meshes) for reliable hit detection
+			renderComponent.traverse((child: any) => {
+				child.userData.entity = enemy;
+			});
 
 			// set animations
 
@@ -488,14 +496,35 @@ class World {
 		level.name = 'level';
 		level.setRenderComponent(renderComponent, sync);
 
-		level.setRenderComponent(renderComponent, sync);
+		// Set userData.entity on level for consistent entity lookup
+		renderComponent.userData.entity = level;
+		renderComponent.traverse((child: any) => {
+			child.userData.entity = level;
+		});
 
+		this.level = level;
 		this.add(level);
 
 		// Populate arenaObjects for physics collision
 		this.arenaObjects = [];
-		// const box = new Box3().setFromObject(mesh);
-		// this.arenaObjects.push({ mesh: mesh as Mesh, box: box });
+		
+		// Ensure world matrices are updated before computing boxes
+		renderComponent.updateMatrixWorld(true);
+
+		// We no longer create Box3 for the level mesh because it's concave and causes
+		// the player to float on top of the bounding box.
+		// Instead, Player.ts will use the Level entity's BVH for precise collision.
+		
+		// Only add other objects if needed
+		/*
+		renderComponent.traverse((object: any) => {
+			if (object.isMesh) {
+				const box = new Box3().setFromObject(object);
+				this.arenaObjects.push({ mesh: object as Mesh, box: box });
+			}
+		});
+		*/
+		console.log('Total arenaObjects:', this.arenaObjects.length);
 
 		// navigation mesh
 
@@ -907,11 +936,16 @@ class World {
 	private _updateRIFT(delta: number): void {
 		if (!this.rift) return;
 
-		// Track head bob time for weapon sway
+		// Track head bob time for weapon animation
 		const speed = this.player?.velocity ?
 			Math.sqrt(this.player.velocity.x ** 2 + this.player.velocity.z ** 2) : 0;
+		
 		if (speed > 0.1) {
-			this.headBobTime += delta * speed * 0.5;
+			// Walking/running bob
+			this.headBobTime += delta * speed * 2.0;
+		} else {
+			// Idle breathing
+			this.headBobTime += delta * 2.0;
 		}
 
 		// Use actual sprint input from controls

@@ -16,8 +16,14 @@ export class WeaponSystem {
   private scene: THREE.Scene;
   private camera: THREE.Camera;
   private audioManager: AudioManager;
-  private muzzleFlashes: THREE.Group;
   private weaponMesh!: THREE.Object3D;
+
+  // Muzzle flash effects (persistent)
+  private muzzleFlash!: THREE.Sprite;
+  private muzzleFlash2!: THREE.Sprite;
+  private muzzleLight!: THREE.PointLight;
+  private muzzleFlashTimer: number = 0;
+  private muzzleFlashDuration: number = 0.05;
 
   // State
   public currentWeapon: WeaponType = WeaponType.AK47;
@@ -27,6 +33,14 @@ export class WeaponSystem {
   private currentRecoil: { x: number; y: number } = { x: 0, y: 0 };
   private targetRecoil: { x: number; y: number } = { x: 0, y: 0 };
   private currentSpread: number = 0;
+
+  // Weapon Animation
+  private weaponSwayX: number = 0;
+  private weaponSwayY: number = 0;
+  private weaponKickZ: number = 0;
+  private weaponKickRotX: number = 0;
+  private sprintBlend: number = 0;
+  private reloadBlend: number = 0;
 
   // Weapon model (placeholder position for now)
   // private weaponOffset: THREE.Vector3 = new THREE.Vector3(0.2, -0.2, -0.5);
@@ -38,11 +52,12 @@ export class WeaponSystem {
     this.scene = scene;
     this.camera = camera;
     this.audioManager = audioManager;
-    this.muzzleFlashes = new THREE.Group();
-    this.scene.add(this.muzzleFlashes);
 
     this.initializeWeaponStates();
     this.loadAllAudio();
+
+    // Initialize muzzle flash effects
+    this.initializeMuzzleFlash();
 
     // Initialize weapon model
     this.resetWeaponState();
@@ -67,6 +82,37 @@ export class WeaponSystem {
         });
       }
     });
+  }
+
+  private initializeMuzzleFlash(): void {
+    const initialConfig = WEAPON_CONFIG[this.currentWeapon];
+    const initialPos = initialConfig.muzzle.position;
+
+    // Primary muzzle flash sprite
+    const spriteMat = new THREE.SpriteMaterial({
+      color: 0xffffaa,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    this.muzzleFlash = new THREE.Sprite(spriteMat);
+    this.muzzleFlash.scale.set(0.3, 0.3, 1);
+    this.muzzleFlash.position.set(initialPos.x, initialPos.y, initialPos.z);
+
+    // Secondary muzzle flash sprite (for depth)
+    const spriteMat2 = new THREE.SpriteMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    this.muzzleFlash2 = new THREE.Sprite(spriteMat2);
+    this.muzzleFlash2.scale.set(0.2, 0.2, 1);
+    this.muzzleFlash2.position.set(initialPos.x, initialPos.y, initialPos.z - 0.02);
+
+    // Muzzle light
+    this.muzzleLight = new THREE.PointLight(initialConfig.muzzle.lightColor, 0, initialConfig.muzzle.lightRange);
+    this.muzzleLight.position.copy(this.muzzleFlash.position);
   }
 
   private loadAllAudio(): void {
@@ -148,9 +194,11 @@ export class WeaponSystem {
     const config = WEAPON_CONFIG[this.currentWeapon];
     const offset = config.muzzle.position;
 
+    // Transform local muzzle offset (relative to camera) to world space
     const muzzlePos = new THREE.Vector3(offset.x, offset.y, offset.z);
-    muzzlePos.applyQuaternion(this.camera.quaternion);
-    muzzlePos.add(this.camera.position);
+    // Config values are already in proper scale for weapon mesh at scale 1.0
+    
+    muzzlePos.applyMatrix4(this.camera.matrixWorld);
 
     return muzzlePos;
   }
@@ -191,7 +239,7 @@ export class WeaponSystem {
       this.audioManager.playSound(config.audio.fire, 'sfx', { volume: 0.5 });
     }
 
-    // Apply recoil
+    // Apply recoil (includes weapon visual kick)
     this.applyRecoil(config.recoil);
 
     // Increase spread
@@ -200,8 +248,8 @@ export class WeaponSystem {
       config.spread.max
     );
 
-    // Create muzzle flash
-    this.createMuzzleFlash(this.getMuzzleWorldPosition(), camera.getWorldDirection(new THREE.Vector3()));
+    // Trigger muzzle flash
+    this.triggerMuzzleFlash();
 
     // Eject shell
     if (this.shellEjectCallback) {
@@ -244,20 +292,35 @@ export class WeaponSystem {
     direction.normalize();
   }
 
-  private applyRecoil(recoilConfig: { pitchAmount: number; yawAmount: number }): void {
+  private applyRecoil(recoilConfig: { pitchAmount: number; yawAmount: number; kickZ: number; kickRotX: number }): void {
+    // Camera recoil
     this.targetRecoil.x += (Math.random() - 0.5) * recoilConfig.yawAmount;
     this.targetRecoil.y += recoilConfig.pitchAmount;
+
+    // Weapon visual kick from config
+    this.weaponKickZ = recoilConfig.kickZ;
+    this.weaponKickRotX = (recoilConfig.kickRotX * Math.PI) / 180; // Convert degrees to radians
+    
+    console.log('Recoil applied - kickZ:', this.weaponKickZ, 'kickRotX:', this.weaponKickRotX, 'config:', recoilConfig);
   }
 
-  private createMuzzleFlash(position: THREE.Vector3, direction: THREE.Vector3): void {
-    const flash = new THREE.PointLight(0xffaa00, 1, 3);
-    flash.position.copy(position).add(direction.clone().multiplyScalar(0.5));
-    this.muzzleFlashes.add(flash);
+  private triggerMuzzleFlash(): void {
+    const config = WEAPON_CONFIG[this.currentWeapon];
 
-    // Remove flash after a short duration
-    setTimeout(() => {
-      this.muzzleFlashes.remove(flash);
-    }, 50);
+    // Set flash active
+    this.muzzleFlashTimer = config.muzzle.flashDuration;
+    this.muzzleFlashDuration = config.muzzle.flashDuration;
+
+    // Set initial opacity
+    (this.muzzleFlash.material as THREE.SpriteMaterial).opacity = 1.2;
+    (this.muzzleFlash2.material as THREE.SpriteMaterial).opacity = 0.9;
+    
+    // Set light intensity
+    this.muzzleLight.intensity = config.muzzle.lightIntensity;
+
+    // Randomize rotation for variety
+    this.muzzleFlash.material.rotation = Math.random() * Math.PI * 2;
+    this.muzzleFlash2.material.rotation = Math.random() * Math.PI * 2;
   }
 
   public reload(): void {
@@ -276,7 +339,7 @@ export class WeaponSystem {
     }
   }
 
-  public update(deltaTime: number, _mouseMovement: { x: number, y: number }, isSprinting: boolean, _headBobTime: number = 0): void {
+  public update(deltaTime: number, mouseMovement: { x: number, y: number }, isSprinting: boolean, headBobTime: number = 0): void {
     const config = WEAPON_CONFIG[this.currentWeapon];
     const state = this.weaponStates.get(this.currentWeapon);
 
@@ -304,6 +367,84 @@ export class WeaponSystem {
     // Spread recovery
     const minSpread = isSprinting ? config.spread.base * 2 : config.spread.base;
     this.currentSpread = THREE.MathUtils.lerp(this.currentSpread, minSpread, deltaTime * config.spread.recoveryRate);
+
+    // Weapon kickback recovery
+    this.weaponKickZ *= 1 - 5 * deltaTime;
+    this.weaponKickRotX *= 1 - 5 * deltaTime;
+
+		// Weapon sway (follows mouse movement with lag)
+		const swayAmount = 0.01; // How much weapon lags behind mouse
+		const swayRecovery = 8; // How fast it returns to center
+		this.weaponSwayX += (mouseMovement.x * swayAmount - this.weaponSwayX) * swayRecovery * deltaTime;
+		this.weaponSwayY += (mouseMovement.y * swayAmount - this.weaponSwayY) * swayRecovery * deltaTime;    // Sprint blend
+    const targetSprint = isSprinting ? 1 : 0;
+    this.sprintBlend += (targetSprint - this.sprintBlend) * 8 * deltaTime;
+
+    // Reload blend
+    const targetReload = state.isReloading ? 1 : 0;
+    this.reloadBlend += (targetReload - this.reloadBlend) * 8 * deltaTime;
+
+    // Update muzzle flash
+    if (this.muzzleFlashTimer > 0) {
+      this.muzzleFlashTimer -= deltaTime;
+      if (this.muzzleFlashTimer <= 0) {
+        this.muzzleFlashTimer = 0;
+        (this.muzzleFlash.material as THREE.SpriteMaterial).opacity = 0;
+        (this.muzzleFlash2.material as THREE.SpriteMaterial).opacity = 0;
+        this.muzzleLight.intensity = 0;
+      } else {
+        // Fade out
+        const ratio = this.muzzleFlashTimer / this.muzzleFlashDuration;
+        (this.muzzleFlash.material as THREE.SpriteMaterial).opacity = ratio * 1.2;
+        (this.muzzleFlash2.material as THREE.SpriteMaterial).opacity = ratio * 0.9;
+        this.muzzleLight.intensity = ratio * config.muzzle.lightIntensity;
+
+        // Rotate slightly during flash
+        this.muzzleFlash.material.rotation += deltaTime * 10;
+        this.muzzleFlash2.material.rotation -= deltaTime * 10;
+      }
+    }
+
+    // Update weapon transform (position and rotation)
+    this.updateWeaponTransform(deltaTime, headBobTime);
+  }
+
+  private updateWeaponTransform(delta: number, headBobTime: number): void {
+    if (!this.weaponMesh) return;
+
+    // Base position
+    let targetX = 0.25 - this.weaponSwayX;
+    let targetY = -0.25 - this.weaponSwayY;
+    let targetZ = -0.4;
+
+    // Weapon bob (breathing/walking motion)
+    const bobInfluence = 1.0;
+    const bobX = Math.cos(headBobTime * 0.5) * 0.015 * bobInfluence;
+    const bobY = Math.sin(headBobTime) * 0.035 * bobInfluence;
+    targetX += bobX;
+    targetY += bobY;
+
+    // Kickback from shooting
+    targetZ += this.weaponKickZ;
+
+    // Sprint offset (lower and to the side)
+    targetX += 0.1 * this.sprintBlend;
+    targetY -= 0.2 * this.sprintBlend;
+
+    // Reload offset (dip down)
+    targetY -= 0.15 * this.reloadBlend;
+
+    // Rotation
+    let targetRotX = -this.weaponKickRotX + (0.3 * this.reloadBlend);
+    let targetRotZ = (0.2 * this.sprintBlend);
+
+    // Smooth lerp to target
+    const lerpSpeed = 15;
+    this.weaponMesh.position.x += (targetX - this.weaponMesh.position.x) * lerpSpeed * delta;
+    this.weaponMesh.position.y += (targetY - this.weaponMesh.position.y) * lerpSpeed * delta;
+    this.weaponMesh.position.z += (targetZ - this.weaponMesh.position.z) * lerpSpeed * delta;
+    this.weaponMesh.rotation.x += (targetRotX - this.weaponMesh.rotation.x) * lerpSpeed * delta;
+    this.weaponMesh.rotation.z += (targetRotZ - this.weaponMesh.rotation.z) * lerpSpeed * delta;
   }
 
   private resetWeaponState(): void {
@@ -317,8 +458,26 @@ export class WeaponSystem {
     const group = this.createWeaponModel();
     this.weaponMesh = group;
 
-    // Position relative to camera (adjusted for new models)
+    // Scale weapon model (1.0 for standard meter scale)
+    this.weaponMesh.scale.set(1.0, 1.0, 1.0);
+
+    // Position relative to camera (adjusted for standard scale)
+    // Base position will be animated in updateWeaponTransform
     this.weaponMesh.position.set(0.25, -0.25, -0.4);
+
+    // Add muzzle effects to weapon
+    const config = WEAPON_CONFIG[this.currentWeapon];
+    const pos = config.muzzle.position;
+    
+    this.muzzleFlash.position.set(pos.x, pos.y, pos.z);
+    this.muzzleFlash2.position.set(pos.x, pos.y, pos.z - 0.02);
+    this.muzzleLight.position.copy(this.muzzleFlash.position);
+    this.muzzleLight.color.setHex(config.muzzle.lightColor);
+    this.muzzleLight.distance = config.muzzle.lightRange;
+
+    this.weaponMesh.add(this.muzzleFlash);
+    this.weaponMesh.add(this.muzzleFlash2);
+    this.weaponMesh.add(this.muzzleLight);
 
     // Add to camera
     this.camera.add(this.weaponMesh);

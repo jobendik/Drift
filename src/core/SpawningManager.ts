@@ -158,6 +158,12 @@ class SpawningManager {
 
 		if (competitor.isPlayer) competitor.head.rotation.set(0, 0, 0, 1);
 
+		// Initialize the current region for navMesh-based collision
+		if (this.world.navMesh) {
+			competitor.currentRegion = this.world.navMesh.getRegionForPoint(competitor.position, 1);
+			competitor.previousPosition.copy(competitor.position);
+		}
+
 		return this;
 
 	}
