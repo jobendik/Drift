@@ -1,5 +1,5 @@
 import { EntityManager, Time, MeshGeometry, Vector3, CellSpacePartitioning } from 'yuka';
-import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3, Mesh, Box3 } from 'three';
+import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3, Mesh, Box3, BoxGeometry, MeshBasicMaterial } from 'three';
 import { HemisphereLight, DirectionalLight } from 'three';
 import { AxesHelper } from 'three';
 
@@ -590,6 +590,17 @@ class World {
 
 		const body = new Object3D(); // dummy 3D object for adding spatial audios
 		body.matrixAutoUpdate = false;
+		
+		// Add invisible collision mesh for raycast hit detection by enemies
+		// Player is 1.8m tall, 0.5m radius (diameter 1m)
+		const collisionGeometry = new BoxGeometry(0.5, 1.8, 0.5);
+		const collisionMaterial = new MeshBasicMaterial({ visible: false });
+		const collisionMesh = new Mesh(collisionGeometry, collisionMaterial);
+		collisionMesh.position.y = 0.9; // Center at half player height
+		collisionMesh.name = 'playerCollision';
+		collisionMesh.userData.entity = player; // Link to player entity for damage
+		body.add(collisionMesh);
+		
 		player.setRenderComponent(body, sync);
 
 		// audio

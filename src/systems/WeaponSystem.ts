@@ -48,6 +48,10 @@ export class WeaponSystem {
   // Callbacks
   private shellEjectCallback?: (pos: THREE.Vector3, dir: THREE.Vector3) => void;
 
+  // Third-person mode for AI enemies
+  private isThirdPerson: boolean = false;
+  private thirdPersonParent: THREE.Object3D | null = null;
+
   constructor(scene: THREE.Scene, camera: THREE.Camera, _assetManager: AssetManager, audioManager: AudioManager) {
     this.scene = scene;
     this.camera = camera;
@@ -65,6 +69,29 @@ export class WeaponSystem {
 
   public setShellEjectCallback(callback: (pos: THREE.Vector3, dir: THREE.Vector3) => void): void {
     this.shellEjectCallback = callback;
+  }
+
+  /**
+   * Configure weapon system for third-person view (for AI enemies)
+   * @param parent The object to attach the weapon to (e.g., hand bone)
+   */
+  public setThirdPersonMode(parent: THREE.Object3D): void {
+    this.isThirdPerson = true;
+    this.thirdPersonParent = parent;
+    
+    // Re-attach current weapon to new parent with third-person positioning
+    if (this.weaponMesh) {
+      if (this.weaponMesh.parent) {
+        this.weaponMesh.parent.remove(this.weaponMesh);
+      }
+      
+      // Scale down for third-person and position in hand
+      this.weaponMesh.scale.set(0.7, 0.7, 0.7);
+      this.weaponMesh.position.set(0, 0, 0);
+      this.weaponMesh.rotation.set(0, Math.PI, 0); // Flip to face forward
+      
+      parent.add(this.weaponMesh);
+    }
   }
 
   private initializeWeaponStates(): void {
@@ -411,6 +438,14 @@ export class WeaponSystem {
 
   private updateWeaponTransform(delta: number, headBobTime: number): void {
     if (!this.weaponMesh) return;
+    
+    // Skip FPS-style animations for third-person mode
+    if (this.isThirdPerson) {
+      // Simple kickback for third-person
+      const kickZ = this.weaponKickZ * 0.5; // Reduced kickback
+      this.weaponMesh.position.z = kickZ;
+      return;
+    }
 
     // Base position
     let targetX = 0.25 - this.weaponSwayX;
@@ -458,13 +493,6 @@ export class WeaponSystem {
     const group = this.createWeaponModel();
     this.weaponMesh = group;
 
-    // Scale weapon model (1.0 for standard meter scale)
-    this.weaponMesh.scale.set(1.0, 1.0, 1.0);
-
-    // Position relative to camera (adjusted for standard scale)
-    // Base position will be animated in updateWeaponTransform
-    this.weaponMesh.position.set(0.25, -0.25, -0.4);
-
     // Add muzzle effects to weapon
     const config = WEAPON_CONFIG[this.currentWeapon];
     const pos = config.muzzle.position;
@@ -479,10 +507,22 @@ export class WeaponSystem {
     this.weaponMesh.add(this.muzzleFlash2);
     this.weaponMesh.add(this.muzzleLight);
 
-    // Add to camera
-    this.camera.add(this.weaponMesh);
-    console.log('DEBUG: Weapon added to camera. Weapon UUID:', this.weaponMesh.uuid);
-    console.log('DEBUG: Camera UUID:', this.camera.uuid);
+    // Attach to appropriate parent based on mode
+    if (this.isThirdPerson && this.thirdPersonParent) {
+      // Third-person mode: attach to hand bone with appropriate transform
+      this.weaponMesh.scale.set(0.7, 0.7, 0.7);
+      this.weaponMesh.position.set(0, 0, 0);
+      this.weaponMesh.rotation.set(0, Math.PI, 0); // Face forward
+      this.thirdPersonParent.add(this.weaponMesh);
+      console.log('DEBUG: Weapon added to third-person parent');
+    } else {
+      // First-person mode: attach to camera
+      this.weaponMesh.scale.set(1.0, 1.0, 1.0);
+      this.weaponMesh.position.set(0.25, -0.25, -0.4);
+      this.camera.add(this.weaponMesh);
+      console.log('DEBUG: Weapon added to camera. Weapon UUID:', this.weaponMesh.uuid);
+      console.log('DEBUG: Camera UUID:', this.camera.uuid);
+    }
   }
 
   // Weapon model creation

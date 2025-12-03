@@ -10,7 +10,7 @@ import { GetHealthEvaluator } from '../evaluators/GetHealthEvaluator';
 import { GetWeaponEvaluator } from '../evaluators/GetWeaponEvaluator';
 import World from '../core/World';
 import { WeaponSystem as RIFTWeaponSystem } from '../systems/WeaponSystem';
-import { Camera as ThreeCamera, PerspectiveCamera, Vector3 as ThreeVector3 } from 'three';
+import { Camera as ThreeCamera, PerspectiveCamera, Vector3 as ThreeVector3, Object3D } from 'three';
 import { WeaponType } from '../types/weapons';
 
 const positiveWeightings = new Array();
@@ -895,16 +895,34 @@ class Enemy extends Vehicle {
 	* @return {Enemy} A reference to this game entity.
 	*/
 	private _initRIFTWeaponSystem(): this {
-		// Create a virtual camera for this enemy (used for weapon rendering)
+		// Create a virtual camera for this enemy (used for weapon aiming/raycast)
 		this.enemyCamera = new PerspectiveCamera(75, 1, 0.1, 1000);
 
 		// Position camera at enemy's head by finding the head bone in the skeleton
+		let handBone: any = null;
+		let headBone: any = null;
+		
 		if (this._renderComponent) {
-			// Try to find a head bone in the skeleton
-			let headBone: any = null;
+			// Try to find head and hand bones in the skeleton
 			this._renderComponent.traverse((child: any) => {
-				if (child.isBone && child.name.toLowerCase().includes('head')) {
-					headBone = child;
+				if (child.isBone) {
+					const boneName = child.name.toLowerCase();
+					if (boneName.includes('head')) {
+						headBone = child;
+					}
+					// Look for right hand bone (weapon hand)
+					if (boneName.includes('hand') && boneName.includes('right') || 
+					    boneName.includes('r_hand') || 
+					    boneName.includes('hand_r') ||
+					    boneName.includes('rhand')) {
+						handBone = child;
+					}
+					// Also try arm if no hand found
+					if (!handBone && (boneName.includes('arm') && boneName.includes('right') ||
+					    boneName.includes('r_arm') || 
+					    boneName.includes('arm_r'))) {
+						handBone = child;
+					}
 				}
 			});
 
@@ -931,6 +949,21 @@ class Enemy extends Vehicle {
 		this.riftWeaponSystem.setShellEjectCallback((pos: ThreeVector3, dir: ThreeVector3) => {
 			this.world.rift.particleSystem.spawnShellCasing(pos, dir);
 		});
+
+		// Configure for third-person mode so weapon is visible in enemy's hand
+		if (handBone) {
+			// Attach weapon to hand bone
+			this.riftWeaponSystem.setThirdPersonMode(handBone);
+			console.log(`Enemy ${this.name}: Weapon attached to hand bone: ${handBone.name}`);
+		} else if (this._renderComponent) {
+			// Create a weapon mount point if no hand bone found
+			const weaponMount = new Object3D();
+			weaponMount.name = 'weapon_mount';
+			weaponMount.position.set(0.3, CONFIG.BOT.HEAD_HEIGHT * 0.6, 0.2); // Position at right side, chest height
+			this._renderComponent.add(weaponMount);
+			this.riftWeaponSystem.setThirdPersonMode(weaponMount);
+			console.log(`Enemy ${this.name}: Weapon attached to fallback mount point`);
+		}
 
 		// Start with a random weapon
 		const weapons = [WeaponType.AK47, WeaponType.M4, WeaponType.Scar, WeaponType.Shotgun, WeaponType.LMG, WeaponType.Pistol];
@@ -1053,9 +1086,14 @@ class Enemy extends Vehicle {
 
 			case MESSAGE_HIT:
 
-				// reduce health
+				// Ignore damage if already dead or dying
+				if (this.status !== STATUS_ALIVE) {
+					return true;
+				}
 
-				this.health -= telegram.data.damage;
+				// reduce health (clamp to 0 minimum)
+
+				this.health = Math.max(0, this.health - telegram.data.damage);
 
 				// logging
 

@@ -157,23 +157,26 @@ class Player extends MovingEntity {
 	*/
 	update(delta: number) {
 
-		// Capture Input from Controls
-		const input = this.world.fpsControls.input;
-		const inputDir = new Vector3();
-		if (input.forward) inputDir.z -= 1;
-		if (input.backward) inputDir.z += 1;
-		if (input.left) inputDir.x -= 1;
-		if (input.right) inputDir.x += 1;
+		// Only process input and physics if alive
+		if (this.status === STATUS_ALIVE) {
+			// Capture Input from Controls
+			const input = this.world.fpsControls.input;
+			const inputDir = new Vector3();
+			if (input.forward) inputDir.z -= 1;
+			if (input.backward) inputDir.z += 1;
+			if (input.left) inputDir.x -= 1;
+			if (input.right) inputDir.x += 1;
 
-		// Run Physics Simulation
-		this.updatePhysics(
-			delta,
-			inputDir,
-			input.sprint,
-			input.jump,
-			input.crouch,
-			this.world.arenaObjects
-		);
+			// Run Physics Simulation
+			this.updatePhysics(
+				delta,
+				inputDir,
+				input.sprint,
+				input.jump,
+				input.crouch,
+				this.world.arenaObjects
+			);
+		}
 
 		// Sync Yuka Entity State
 		// Yuka uses 'position' and 'velocity' which we are updating in updatePhysics
@@ -206,6 +209,8 @@ class Player extends MovingEntity {
 			this.reset();
 			this.world.spawningManager.respawnCompetitor(this);
 			this.world.fpsControls.sync();
+			// Update health UI after respawn position is set
+			this.world.uiManager.updateHealthStatus();
 		}
 
 		this.mixer!.update(delta);
@@ -427,14 +432,42 @@ class Player extends MovingEntity {
 		this.health = this.maxHealth;
 		this.status = STATUS_ALIVE;
 
+		// Reset physics state
+		this.velocity.set(0, 0, 0);
+		this.prevVelocity.set(0, 0, 0);
+		this.onGround = true;
+		this.isSprinting = false;
+		this.isSliding = false;
+		this.slideTimer = 0;
+		this.slideCooldownTimer = 0;
+		this.slideDirection.set(0, 0, 0);
+		this.coyoteTimer = 0;
+		this.jumpBufferTimer = 0;
+		this.isJumping = false;
+		this.canCutJump = false;
+		this.groundNormal.set(0, 1, 0);
+		this.slopeAngle = 0;
+		this.stamina = 100;
+		this.landingImpact = 0;
+		this.headBobTime = 0;
+
 		this.weaponSystem.reset();
 
 		this.world.fpsControls.reset();
+		this.world.fpsControls.active = true;
 
 		this.world.uiManager.showFPSInterface();
+		// Note: Health UI is updated after respawn position is set, not here
 
+		// Reset death animation properly so it can play again
 		const animation = this.animations.get('player_death');
-		if (animation) animation.stop();
+		if (animation) {
+			animation.stop();
+			animation.reset(); // Reset time to 0 so it can play from beginning next time
+		}
+
+		// Reset endTimeDying to prevent immediate re-death
+		this.endTimeDying = Infinity;
 
 		return this;
 
@@ -460,7 +493,10 @@ class Player extends MovingEntity {
 		this.velocity.set(0, 0, 0);
 
 		const animation = this.animations.get('player_death');
-		if (animation) animation.play();
+		if (animation) {
+			animation.reset(); // Ensure animation starts from beginning
+			animation.play();
+		}
 
 		this.weaponSystem.hideCurrentWeapon();
 
@@ -477,6 +513,11 @@ class Player extends MovingEntity {
 	* @return {Player} A reference to this game entity.
 	*/
 	shoot() {
+
+		// Cannot shoot if dead or dying
+		if (this.status !== STATUS_ALIVE) {
+			return this;
+		}
 
 		const head = this.head;
 		const world = this.world;
@@ -738,6 +779,7 @@ class Player extends MovingEntity {
 
 			const action = mixer.clipAction(clip);
 			action.loop = LoopOnce;
+			action.clampWhenFinished = true; // Hold at the end frame
 			action.name = clip.name;
 
 			this.animations.set(action.name, action);
@@ -760,15 +802,20 @@ class Player extends MovingEntity {
 
 			case MESSAGE_HIT:
 
+				// Ignore damage if already dead or dying
+				if (this.status !== STATUS_ALIVE) {
+					return true;
+				}
+
 				// play audio
 
 				const audio = this.audios.get('impact' + MathUtils.randInt(1, 7));
 				if (audio && audio.isPlaying === true) audio.stop();
 				if (audio) audio.play();
 
-				// reduce health
+				// reduce health (clamp to 0 minimum)
 
-				this.health -= telegram.data.damage;
+				this.health = Math.max(0, this.health - telegram.data.damage);
 
 				// update UI
 
