@@ -947,7 +947,9 @@ class Enemy extends Vehicle {
 
 		// Set up shell ejection callback
 		this.riftWeaponSystem.setShellEjectCallback((pos: ThreeVector3, dir: ThreeVector3) => {
-			this.world.rift.particleSystem.spawnShellCasing(pos, dir);
+			// Ground level is the enemy's Y position (enemy.position is at feet level)
+			const groundLevel = this.position.y;
+			this.world.rift.particleSystem.spawnShellCasing(pos, dir, groundLevel);
 		});
 
 		// Configure for third-person mode so weapon is visible in enemy's hand

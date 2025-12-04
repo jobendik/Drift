@@ -5,6 +5,7 @@ import { ParticleSystem } from './systems/ParticleSystem';
 import { DecalSystem, SurfaceMaterial } from './systems/DecalSystem';
 import { BulletTracerSystem } from './systems/BulletTracerSystem';
 import { ImpactSystem } from './systems/ImpactSystem';
+import { ScreenEffects } from './systems/ScreenEffects';
 import { HUDManager } from './ui/HUDManager';
 import { KillfeedManager } from './ui/KillfeedManager';
 
@@ -24,6 +25,7 @@ export class RIFTIntegration {
   public decalSystem: DecalSystem;
   public tracerSystem: BulletTracerSystem;
   public impactSystem: ImpactSystem;
+  public screenEffects: ScreenEffects;
   public audioManager: AudioManager;
   
   // UI
@@ -31,7 +33,7 @@ export class RIFTIntegration {
   public killfeedManager: KillfeedManager;
 
   // Core references
-  private camera: THREE.Camera;
+  private camera: THREE.PerspectiveCamera;
   private raycaster: THREE.Raycaster;
 
   // State
@@ -39,7 +41,7 @@ export class RIFTIntegration {
 
   constructor(
     scene: THREE.Scene, 
-    camera: THREE.Camera, 
+    camera: THREE.PerspectiveCamera, 
     audioListener: THREE.AudioListener,
     assetManager: AssetManager
   ) {
@@ -55,6 +57,7 @@ export class RIFTIntegration {
     this.decalSystem = new DecalSystem(scene);
     this.tracerSystem = new BulletTracerSystem(scene, camera);
     this.impactSystem = new ImpactSystem(scene, audioListener);
+    this.screenEffects = new ScreenEffects(camera);
     
     // WeaponSystem depends on ParticleSystem
     this.weaponSystem = new WeaponSystem(scene, camera, assetManager, this.audioManager);
@@ -84,10 +87,26 @@ export class RIFTIntegration {
     );
 
     if (result.shotFired) {
-      // Handle recoil on camera
-      // Note: In a full integration, this would modify the camera's rotation directly
-      // or feed into the input system. For now, we'll let the WeaponSystem handle its internal recoil state
-      // and the PlayerController should query it.
+      const config = this.weaponSystem.currentConfig;
+      
+      // Apply screen effects
+      // 1. Screen shake based on weapon power
+      const weaponPower = config.damage / 30; // Normalize damage to power scale
+      this.screenEffects.addFireShake(weaponPower);
+      
+      // 2. FOV punch for impact feel
+      this.screenEffects.addFOVPunch(1.5 * weaponPower, 0.08);
+      
+      // 3. Camera recoil (actual camera rotation)
+      const recoilPitch = config.recoil.pitchAmount * 0.5; // Scale down for camera
+      const recoilYaw = (Math.random() - 0.5) * config.recoil.yawAmount * 0.5;
+      this.screenEffects.applyRecoil(recoilPitch, recoilYaw);
+      this.screenEffects.setRecoilRecoveryRate(config.recoil.recoveryRate);
+      
+      // 4. Spawn muzzle smoke
+      const muzzlePos = this.weaponSystem.getMuzzleWorldPosition();
+      const muzzleDir = this.camera.getWorldDirection(new THREE.Vector3());
+      this.particleSystem.spawnMuzzleSmoke(muzzlePos, muzzleDir);
 
       // Process each shot (shotguns have multiple)
       const directions = result.directions || [result.direction];
@@ -254,26 +273,51 @@ export class RIFTIntegration {
 
       if (entity) {
         console.log('HIT ENTITY:', entity.name, 'Health:', entity.health);
-        const damage = this.weaponSystem.currentConfig.damage;
+        
+        // Headshot detection - check if hit point is in the upper part of the entity
+        // Assuming entity has a position and height of ~1.8 (human height)
+        const entityY = entity.position?.y ?? 0;
+        const entityHeight = entity.height ?? 1.8;
+        const headZone = entityY + entityHeight * 0.85; // Upper 15% is head zone
+        const isHeadshot = hit.point.y >= headZone;
+        
+        // Calculate damage with headshot multiplier
+        const baseDamage = this.weaponSystem.currentConfig.damage;
+        const damage = isHeadshot ? baseDamage * 2.5 : baseDamage; // 2.5x headshot multiplier
+        
+        console.log(`Hit at Y=${hit.point.y.toFixed(2)}, HeadZone=${headZone.toFixed(2)}, Headshot=${isHeadshot}`);
         
         // Apply damage via message system
         if (entity.handleMessage) {
             const telegram = {
                 message: MESSAGE_HIT,
-                data: { damage: damage, direction: direction },
+                data: { damage: damage, direction: direction, isHeadshot: isHeadshot },
                 sender: { isPlayer: true, uuid: 'player' }
             };
             entity.handleMessage(telegram);
         }
 
+        // Play audio feedback
         this.impactSystem.playBodyImpact(hit.point);
+        this.impactSystem.playHitConfirmation(); // Instant hit sound feedback
         
         // Check if kill (assuming entity has health)
         const isKill = entity.health <= 0;
         this.hudManager.showHitmarker(isKill);
+        this.hudManager.showHitFeedback(isKill, isHeadshot);
+        
+        // Show headshot/kill icons
+        if (isKill) {
+          this.impactSystem.playDeathImpact(hit.point);
+          if (isHeadshot) {
+            this.hudManager.showHeadshotIcon();
+          } else {
+            this.hudManager.showKillIcon();
+          }
+        }
         
         // Also spawn blood/impact effect for body hit
-        this.particleSystem.spawnImpactEffect(hit.point, false);
+        this.particleSystem.spawnImpactEffect(hit.point, isHeadshot);
       }
 
     } else {
@@ -293,6 +337,7 @@ export class RIFTIntegration {
     this.particleSystem.update(delta);
     this.decalSystem.update(delta);
     this.tracerSystem.update(delta);
+    this.screenEffects.update(delta);
 
     // Update HUD with weapon state
     this.updateHUD();
@@ -317,6 +362,41 @@ export class RIFTIntegration {
     this.decalSystem.clear();
     this.tracerSystem.clear();
     this.particleSystem.clear();
+    this.screenEffects.reset();
     // Dispose other resources
+  }
+
+  /**
+   * Apply damage effects when player takes damage
+   * @param damageAmount Amount of damage taken
+   * @param maxHealth Player's max health
+   * @param directionAngle Optional angle to attacker in degrees
+   */
+  public applyDamageEffects(damageAmount: number, maxHealth: number, directionAngle?: number): void {
+    // Screen shake based on damage
+    const damagePercent = damageAmount / maxHealth;
+    this.screenEffects.addDamageShake(damagePercent);
+    
+    // HUD vignette effect
+    this.hudManager.showDamageVignette(damageAmount, maxHealth, directionAngle);
+    
+    // Directional damage indicator
+    if (directionAngle !== undefined) {
+      this.hudManager.flashDamage(directionAngle);
+    }
+  }
+
+  /**
+   * Get current camera recoil for applying to player head rotation
+   */
+  public getCameraRecoil(): { pitch: number; yaw: number } {
+    return this.screenEffects.getRecoil();
+  }
+
+  /**
+   * Get screen shake offset to apply to camera position
+   */
+  public getShakeOffset(): THREE.Vector3 {
+    return this.screenEffects.getShakeOffset();
   }
 }

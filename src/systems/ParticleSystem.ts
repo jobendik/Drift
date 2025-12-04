@@ -53,12 +53,18 @@ interface Shell {
   lifetime: number;
   onHit?: (pos: THREE.Vector3) => void;
   hasHit: boolean;
+  groundLevel: number; // Y coordinate of the ground where shell should land
+  bounceCount: number; // Track number of bounces for sound variation
+  settled: boolean; // Whether the shell has come to rest on the ground
 }
 
 export class ParticleSystem {
   private particles: Particle[] = [];
   private shells: Shell[] = [];
   private scene: THREE.Scene;
+  
+  // Callback for shell bounce sounds
+  private onShellBounce?: (position: THREE.Vector3, bounceNumber: number) => void;
   
   // Pools
   private spherePool: ParticlePool;
@@ -91,11 +97,20 @@ export class ParticleSystem {
     }, 50);
 
     this.shellPool = new ParticlePool(scene, () => {
-      return new THREE.Mesh(
-        new THREE.CylinderGeometry(0.01, 0.01, 0.05, 6),
-        new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.2 })
+      // Shell casing - brass colored cylinder, larger for visibility
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.006, 0.04, 8), // Larger, tapered brass casing
+        new THREE.MeshStandardMaterial({ 
+          color: 0xd4af37, 
+          metalness: 0.85, 
+          roughness: 0.15,
+          emissive: 0xd4af37,
+          emissiveIntensity: 0.15 // Slight glow for visibility
+        })
       );
-    }, 30);
+      mesh.castShadow = true;
+      return mesh;
+    }, 50);
 
     this.smokePool = new ParticlePool(scene, () => {
       const material = new THREE.SpriteMaterial({
@@ -365,15 +380,39 @@ export class ParticleSystem {
 
   /**
    * Spawn shell casing ejection
+   * @param position World position to spawn shell
+   * @param direction Ejection direction
+   * @param groundLevel Y coordinate of the ground (player feet position)
+   * @param onHit Optional callback when shell hits ground
    */
-  public spawnShellCasing(position: THREE.Vector3, direction: THREE.Vector3, onHit?: (pos: THREE.Vector3) => void): void {
+  public spawnShellCasing(position: THREE.Vector3, direction: THREE.Vector3, groundLevel: number = 0, onHit?: (pos: THREE.Vector3) => void): void {
     const mesh = this.shellPool.get() as THREE.Mesh;
     
-    mesh.position.copy(position);
-    mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    // Reset material opacity (may have been faded from previous use)
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    material.opacity = 1.0;
+    material.transparent = false;
     
-    const speed = 2 + Math.random() * 2;
+    mesh.position.copy(position);
+    // Initial rotation - orient cylinder with some randomness
+    mesh.rotation.set(
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2
+    );
+    
+    // Ejection velocity - direction with added upward component
+    const speed = 2.5 + Math.random() * 1.5;
     const velocity = direction.clone().multiplyScalar(speed);
+    
+    // Add upward velocity for arc
+    velocity.y += 1.5 + Math.random() * 1.0;
+    
+    console.log('Shell spawned:', {
+      pos: mesh.position.clone(),
+      groundLevel: groundLevel,
+      velocity: velocity.clone()
+    });
     
     this.shells.push({
       mesh,
@@ -383,9 +422,12 @@ export class ParticleSystem {
         (Math.random() - 0.5) * 20,
         (Math.random() - 0.5) * 20
       ),
-      lifetime: 3.0,
+      lifetime: 15.0, // Long lifetime so shells stay visible on ground
       onHit,
-      hasHit: false
+      hasHit: false,
+      groundLevel: groundLevel, // Store ground level for this shell
+      bounceCount: 0, // Track bounces for sound variation
+      settled: false // Not yet settled on ground
     });
   }
 
@@ -642,38 +684,94 @@ export class ParticleSystem {
       const shell = this.shells[i];
       shell.lifetime -= delta;
       
+      // Remove shells when lifetime expires
       if (shell.lifetime <= 0) {
         this.shellPool.release(shell.mesh);
         this.shells.splice(i, 1);
         continue;
       }
       
+      // If shell is settled, just handle fade-out in last 2 seconds
+      if (shell.settled) {
+        if (shell.lifetime < 2.0) {
+          // Fade out shell in last 2 seconds
+          const material = shell.mesh.material as THREE.MeshStandardMaterial;
+          material.transparent = true;
+          material.opacity = shell.lifetime / 2.0;
+        }
+        continue; // Skip physics for settled shells
+      }
+      
+      // Apply gravity
       shell.velocity.y -= 9.8 * delta;
       shell.mesh.position.add(shell.velocity.clone().multiplyScalar(delta));
       
+      // Apply rotation (tumbling)
       shell.mesh.rotation.x += shell.rotationalVelocity.x * delta;
       shell.mesh.rotation.y += shell.rotationalVelocity.y * delta;
       shell.mesh.rotation.z += shell.rotationalVelocity.z * delta;
       
-      if (shell.mesh.position.y <= 0.025) {
-        if (!shell.hasHit) {
-          shell.hasHit = true;
-          if (shell.onHit) {
-            shell.onHit(shell.mesh.position);
-          }
-          shell.velocity.y = Math.abs(shell.velocity.y) * 0.5;
+      // Ground collision using stored ground level (+ shell radius offset)
+      const shellRadius = 0.02; // Match half the shell height
+      const groundY = shell.groundLevel + shellRadius;
+      
+      if (shell.mesh.position.y <= groundY && shell.velocity.y < 0) {
+        shell.mesh.position.y = groundY;
+        shell.bounceCount++;
+        
+        // Calculate impact velocity for sound intensity
+        const impactSpeed = Math.abs(shell.velocity.y);
+        
+        // Play bounce sound (louder for first bounce, quieter for subsequent)
+        if (this.onShellBounce && impactSpeed > 0.3) {
+          this.onShellBounce(shell.mesh.position.clone(), shell.bounceCount);
+        }
+        
+        // Bounce physics - energy loss increases with each bounce
+        const bounceFactor = Math.max(0.15, 0.45 - shell.bounceCount * 0.1);
+        const frictionFactor = Math.max(0.4, 0.75 - shell.bounceCount * 0.1);
+        
+        if (impactSpeed > 0.4) {
+          // Bounce - reverse and reduce Y velocity
+          shell.velocity.y = impactSpeed * bounceFactor;
+          shell.velocity.x *= frictionFactor;
+          shell.velocity.z *= frictionFactor;
+          shell.rotationalVelocity.multiplyScalar(frictionFactor);
+        } else {
+          // Too slow to bounce - start settling
+          shell.velocity.y = 0;
           shell.velocity.x *= 0.7;
           shell.velocity.z *= 0.7;
           shell.rotationalVelocity.multiplyScalar(0.5);
-        } else {
-          if (shell.mesh.position.y < 0.025) shell.mesh.position.y = 0.025;
-          shell.velocity.y = 0;
-          shell.velocity.x *= 0.9;
-          shell.velocity.z *= 0.9;
-          shell.rotationalVelocity.multiplyScalar(0.9);
+        }
+        
+        // Check if shell should settle completely
+        const totalSpeed = Math.sqrt(
+          shell.velocity.x * shell.velocity.x + 
+          shell.velocity.y * shell.velocity.y +
+          shell.velocity.z * shell.velocity.z
+        );
+        
+        if (totalSpeed < 0.1 && shell.bounceCount >= 2) {
+          // Shell has settled - stop all movement
+          shell.velocity.set(0, 0, 0);
+          shell.rotationalVelocity.set(0, 0, 0);
+          shell.settled = true;
+          
+          // Lay the shell flat on the ground
+          shell.mesh.rotation.x = Math.PI / 2; // Horizontal
+          shell.mesh.rotation.z = Math.random() * Math.PI * 2; // Random rotation around Y
+          shell.mesh.position.y = groundY; // Ensure on ground
         }
       }
     }
+  }
+
+  /**
+   * Set callback for shell bounce sounds
+   */
+  public setShellBounceCallback(callback: (position: THREE.Vector3, bounceNumber: number) => void): void {
+    this.onShellBounce = callback;
   }
 
   public clear(): void {

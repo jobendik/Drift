@@ -216,18 +216,58 @@ export class WeaponSystem {
   }
 
   public getMuzzleWorldPosition(): THREE.Vector3 {
-    // In a real implementation, this would be a bone position on the weapon model
-    // For now, we approximate based on camera and offset
+    // Calculate muzzle position: weapon base position + muzzle offset from weapon config
     const config = WEAPON_CONFIG[this.currentWeapon];
-    const offset = config.muzzle.position;
+    const muzzleOffset = config.muzzle.position;
 
-    // Transform local muzzle offset (relative to camera) to world space
-    const muzzlePos = new THREE.Vector3(offset.x, offset.y, offset.z);
-    // Config values are already in proper scale for weapon mesh at scale 1.0
+    // Start with weapon base position in first-person (relative to camera)
+    // Weapon position is (0.25, -0.25, -0.4) relative to camera
+    const weaponBasePos = new THREE.Vector3(0.25, -0.25, -0.4);
     
+    // Add muzzle offset (relative to weapon)
+    // Note: muzzle z should be negative to be forward of weapon
+    const muzzlePos = weaponBasePos.clone();
+    muzzlePos.x += muzzleOffset.x;
+    muzzlePos.y += muzzleOffset.y;
+    muzzlePos.z += muzzleOffset.z; // muzzle.z is typically negative (forward)
+    
+    // Transform from camera-local space to world space
     muzzlePos.applyMatrix4(this.camera.matrixWorld);
 
     return muzzlePos;
+  }
+
+  /**
+   * Get the ejection port position (right side of weapon, where shells eject from)
+   */
+  private getEjectionPortPosition(): THREE.Vector3 {
+    // Start with weapon base position (relative to camera)
+    const weaponBasePos = new THREE.Vector3(0.25, -0.25, -0.4);
+    
+    // Ejection port is on the right side of the weapon, behind the muzzle
+    // Offset: right +0.08, up +0.05, slight forward -0.1 (relative to weapon base)
+    weaponBasePos.x += 0.08;  // Right side
+    weaponBasePos.y += 0.05;  // Slightly above weapon center
+    weaponBasePos.z += -0.1;  // Slightly forward of weapon center
+    
+    // Transform to world space
+    weaponBasePos.applyMatrix4(this.camera.matrixWorld);
+    return weaponBasePos;
+  }
+
+  /**
+   * Get the shell ejection direction (right, up, and slightly back)
+   */
+  private getEjectionDirection(): THREE.Vector3 {
+    // Shells eject to the right, upward, and slightly backward
+    // Add randomization for natural variation
+    const dir = new THREE.Vector3(
+      0.8 + Math.random() * 0.4,   // Right (0.8-1.2)
+      0.5 + Math.random() * 0.3,   // Up (0.5-0.8)
+      0.1 + Math.random() * 0.2    // Slightly back (0.1-0.3)
+    );
+    dir.applyQuaternion(this.camera.quaternion);
+    return dir.normalize();
   }
 
   public shoot(
@@ -278,10 +318,11 @@ export class WeaponSystem {
     // Trigger muzzle flash
     this.triggerMuzzleFlash();
 
-    // Eject shell
+    // Eject shell from ejection port (right side of weapon)
     if (this.shellEjectCallback) {
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-      this.shellEjectCallback(this.getMuzzleWorldPosition(), right);
+      const ejectionPos = this.getEjectionPortPosition();
+      const ejectionDir = this.getEjectionDirection();
+      this.shellEjectCallback(ejectionPos, ejectionDir);
     }
 
     // Calculate shot direction(s)

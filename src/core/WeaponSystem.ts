@@ -240,29 +240,30 @@ class WeaponSystem {
 				this.currentWeapon = weapon;
 
 				// adjust render components. only a single weapon can be visible
+				// Use optional chaining since meshes may not be loaded yet
 
 				switch (weapon.type) {
 
 					case WEAPON_TYPES_BLASTER:
 						// Keep old weapons hidden - RIFT handles rendering
-						this.renderComponents.blaster.mesh.visible = false;
-						this.renderComponents.shotgun.mesh.visible = false;
-						this.renderComponents.assaultRifle.mesh.visible = false;
-						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.blaster.mesh, sync);
+						if (this.renderComponents?.blaster?.mesh) this.renderComponents.blaster.mesh.visible = false;
+						if (this.renderComponents?.shotgun?.mesh) this.renderComponents.shotgun.mesh.visible = false;
+						if (this.renderComponents?.assaultRifle?.mesh) this.renderComponents.assaultRifle.mesh.visible = false;
+						if (this.owner.isPlayer && this.renderComponents?.blaster?.mesh) weapon.setRenderComponent(this.renderComponents.blaster.mesh, sync);
 						break;
 
 					case WEAPON_TYPES_SHOTGUN:
-						this.renderComponents.blaster.mesh.visible = false;
-						this.renderComponents.shotgun.mesh.visible = false;
-						this.renderComponents.assaultRifle.mesh.visible = false;
-						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.shotgun.mesh, sync);
+						if (this.renderComponents?.blaster?.mesh) this.renderComponents.blaster.mesh.visible = false;
+						if (this.renderComponents?.shotgun?.mesh) this.renderComponents.shotgun.mesh.visible = false;
+						if (this.renderComponents?.assaultRifle?.mesh) this.renderComponents.assaultRifle.mesh.visible = false;
+						if (this.owner.isPlayer && this.renderComponents?.shotgun?.mesh) weapon.setRenderComponent(this.renderComponents.shotgun.mesh, sync);
 						break;
 
 					case WEAPON_TYPES_ASSAULT_RIFLE:
-						this.renderComponents.blaster.mesh.visible = false;
-						this.renderComponents.shotgun.mesh.visible = false;
-						this.renderComponents.assaultRifle.mesh.visible = false;
-						if (this.owner.isPlayer) weapon.setRenderComponent(this.renderComponents.assaultRifle.mesh, sync);
+						if (this.renderComponents?.blaster?.mesh) this.renderComponents.blaster.mesh.visible = false;
+						if (this.renderComponents?.shotgun?.mesh) this.renderComponents.shotgun.mesh.visible = false;
+						if (this.renderComponents?.assaultRifle?.mesh) this.renderComponents.assaultRifle.mesh.visible = false;
+						if (this.owner.isPlayer && this.renderComponents?.assaultRifle?.mesh) weapon.setRenderComponent(this.renderComponents.assaultRifle.mesh, sync);
 						break;
 
 					default:
@@ -457,20 +458,31 @@ showCurrentWeapon(): this {
 		*/
 hideCurrentWeapon(): this {
 
+			// Guard against null currentWeapon (can happen with RIFT weapon system)
+			if (!this.currentWeapon) {
+				return this;
+			}
+
 			const type = this.currentWeapon.type;
 
 			switch (type) {
 
 				case WEAPON_TYPES_BLASTER:
-					this.renderComponents.blaster.mesh.visible = false;
+					if (this.renderComponents.blaster?.mesh) {
+						this.renderComponents.blaster.mesh.visible = false;
+					}
 					break;
 
 				case WEAPON_TYPES_SHOTGUN:
-					this.renderComponents.shotgun.mesh.visible = false;
+					if (this.renderComponents.shotgun?.mesh) {
+						this.renderComponents.shotgun.mesh.visible = false;
+					}
 					break;
 
 				case WEAPON_TYPES_ASSAULT_RIFLE:
-					this.renderComponents.assaultRifle.mesh.visible = false;
+					if (this.renderComponents.assaultRifle?.mesh) {
+						this.renderComponents.assaultRifle.mesh.visible = false;
+					}
 					break;
 
 				default:

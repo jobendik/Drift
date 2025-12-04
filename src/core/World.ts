@@ -765,7 +765,22 @@ class World {
 
 		// Setup shell ejection callback for weapon system
 		this.rift.weaponSystem.setShellEjectCallback((pos, dir) => {
-			this.rift.particleSystem.spawnShellCasing(pos, dir);
+			// Ground level is the player's Y position (player.position is at feet level)
+			// The player entity position represents the feet, head is offset by player.height
+			const groundLevel = this.player.position.y;
+			this.rift.particleSystem.spawnShellCasing(pos, dir, groundLevel);
+		});
+
+		// Setup shell bounce sound callback
+		this.rift.particleSystem.setShellBounceCallback((position, bounceNumber) => {
+			// Play shell drop sound with decreasing volume for each bounce
+			// First bounce is loudest, subsequent bounces are quieter
+			const volumeScale = Math.max(0.3, 1.0 - (bounceNumber - 1) * 0.25);
+			
+			// Only play sound for first 4 bounces to avoid audio spam
+			if (bounceNumber <= 4) {
+				this.rift.impactSystem.playShellDrop(position, volumeScale);
+			}
 		});
 
 		// Equip default weapon (AK47)
@@ -967,7 +982,29 @@ class World {
 		this.rift.decalSystem.update(delta);
 		this.rift.tracerSystem.update(delta);
 		this.rift.weaponSystem.update(delta, this.mouseMovement, isSprinting, this.headBobTime);
+		this.rift.screenEffects.update(delta);
 		this.rift.hudManager.updateKillfeed(delta);
+
+		// Apply camera recoil to player's head rotation
+		const recoil = this.rift.getCameraRecoil();
+		if (this.fpsControls && (Math.abs(recoil.pitch) > 0.0001 || Math.abs(recoil.yaw) > 0.0001)) {
+			// Apply recoil to the controls' movement values
+			this.fpsControls.movementY -= recoil.pitch * delta * 0.5;
+			this.fpsControls.movementX -= recoil.yaw * delta * 0.5;
+			
+			// Clamp pitch
+			const PI05 = Math.PI / 2;
+			this.fpsControls.movementY = Math.max(-PI05, Math.min(PI05, this.fpsControls.movementY));
+		}
+
+		// Apply screen shake offset to camera
+		const shakeOffset = this.rift.getShakeOffset();
+		if (shakeOffset.length() > 0.0001) {
+			// Apply shake relative to camera orientation
+			const shakeWorld = shakeOffset.clone();
+			shakeWorld.applyQuaternion(this.camera.quaternion);
+			this.camera.position.add(shakeWorld);
+		}
 
 		// Update HUD with player state
 		if (this.player) {

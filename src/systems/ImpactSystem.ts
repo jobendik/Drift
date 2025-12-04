@@ -203,16 +203,18 @@ export class ImpactSystem {
 
   /**
    * Play shell casing drop sound
-   * Tiny, metallic clink
+   * Tiny, metallic clink with variable volume for bounce intensity
+   * @param position World position of the shell
+   * @param volumeScale Optional volume multiplier (0-1), default 1.0
    */
-  public playShellDrop(position: THREE.Vector3): void {
+  public playShellDrop(position: THREE.Vector3, volumeScale: number = 1.0): void {
     if (!this.audioBuffers.shellDrop) return;
 
     const sound = new THREE.PositionalAudio(this.audioListener);
     sound.setBuffer(this.audioBuffers.shellDrop);
-    sound.setRefDistance(3);
-    sound.setVolume(0.3);
-    sound.setPlaybackRate(2.0 + Math.random() * 0.5); // High pitch for small object
+    sound.setRefDistance(2);
+    sound.setVolume(0.25 * Math.max(0.2, Math.min(1.0, volumeScale))); // Subtle volume
+    sound.setPlaybackRate(1.8 + Math.random() * 0.8); // Varied pitch for natural sound
     sound.setLoop(false);
 
     const temp = new THREE.Object3D();
