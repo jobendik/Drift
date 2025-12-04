@@ -8,10 +8,10 @@ export const PLAYER_CONFIG: PlayerConfig = {
   maxStamina: 100,
   height: 1.7,
   walkSpeed: 8,
-  sprintSpeed: 13,
-  jumpForce: 12,
+  sprintSpeed: 16, // Increased from 13 to make sprint more noticeable
+  jumpForce: 15, // Increased from 12 for higher jumps
   gravity: 35,
-  groundAccel: 50,
+  groundAccel: 80, // Increased from 50 for faster sprint acceleration
   airAccel: 20,
   groundDecel: 30,
   airDecel: 5,

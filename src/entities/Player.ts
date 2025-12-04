@@ -63,6 +63,7 @@ class Player extends MovingEntity {
 	public jumpBufferTimer: number = 0;
 	public isJumping: boolean = false;
 	public canCutJump: boolean = false;
+	public wasJumpPressed: boolean = false;
 	public prevVelocity: Vector3 = new Vector3();
 	public groundNormal: Vector3 = new Vector3(0, 1, 0);
 	public slopeAngle: number = 0;
@@ -173,6 +174,19 @@ class Player extends MovingEntity {
 			if (input.left) inputDir.x -= 1;
 			if (input.right) inputDir.x += 1;
 
+			// Debug logging (sample 5% of frames to avoid spam)
+			if (Math.random() < 0.05) {
+				const horizontalSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
+				console.log('Player State:', {
+					sprint: input.sprint,
+					isSprinting: this.isSprinting,
+					speed: horizontalSpeed.toFixed(2),
+					stamina: this.stamina.toFixed(1),
+					onGround: this.onGround,
+					velocityY: this.velocity.y.toFixed(2),
+				});
+			}
+
 			// Run Physics Simulation
 			this.updatePhysics(
 				delta,
@@ -217,6 +231,11 @@ class Player extends MovingEntity {
 			this.world.fpsControls.sync();
 			// Update health UI after respawn position is set
 			this.world.uiManager.updateHealthStatus();
+		}
+
+		// Update stamina UI if RIFT HUD is available
+		if (this.world.hudManager && this.status === STATUS_ALIVE) {
+			this.world.hudManager.updateStamina(this.stamina, PLAYER_CONFIG.maxStamina || 100);
 		}
 
 		this.mixer!.update(delta);
@@ -275,8 +294,8 @@ class Player extends MovingEntity {
 			}
 		}
 
-		// Sprint and stamina
-		this.isSprinting = wantsToSprint && this.onGround && this.stamina > 0 && !this.isSliding;
+		// Sprint and stamina - allow sprinting with input even in air for responsive feel
+		this.isSprinting = wantsToSprint && this.stamina > 0 && !this.isSliding && hasInput;
 		if (this.isSprinting) {
 			this.stamina -= (PLAYER_CONFIG.staminaDrain || 20) * delta;
 			if (this.stamina < 0) {
@@ -287,9 +306,14 @@ class Player extends MovingEntity {
 			this.stamina = Math.min(PLAYER_CONFIG.maxStamina || 100, this.stamina + (PLAYER_CONFIG.staminaRegen || 30) * delta);
 		}
 
-		// Movement
+		// Movement - ensure sprint is noticeably faster
 		let targetSpeed = PLAYER_CONFIG.walkSpeed || 8;
-		if (this.isSprinting) targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
+		if (this.isSprinting) {
+			targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
+			if (this.world.debug && Math.random() < 0.01) {
+				console.log('Player sprinting! Speed:', targetSpeed, 'Stamina:', this.stamina.toFixed(1));
+			}
+		}
 
 		const isGrounded = this.onGround;
 		
@@ -339,7 +363,7 @@ class Player extends MovingEntity {
 			this.head.position.x = motion * 0.08;
 		}
 
-		// Jump
+		// Jump with buffer and coyote time
 		if (this.onGround) {
 			this.coyoteTimer = PLAYER_CONFIG.coyoteTime || 0.15;
 			this.isJumping = false;
@@ -347,16 +371,28 @@ class Player extends MovingEntity {
 			this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
 		}
 
-		this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
-		if (wantsJump) this.jumpBufferTimer = 0.1; // Set buffer
+		// Countdown existing buffer
+		if (this.jumpBufferTimer > 0) {
+			this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
+		}
+		
+		// Set jump buffer only on NEW press (not while held)
+		if (wantsJump && !this.wasJumpPressed && !this.isJumping) {
+			this.jumpBufferTimer = 0.1;
+		}
+		this.wasJumpPressed = wantsJump;
 
-		const canJump = this.coyoteTimer > 0 || this.onGround;
+		// Execute jump if conditions met
+		let jumpedThisFrame = false;
+		const canJump = (this.coyoteTimer > 0 || this.onGround) && !this.isJumping;
 		if (canJump && this.jumpBufferTimer > 0) {
-			this.velocity.y = PLAYER_CONFIG.jumpForce || 12;
+			this.velocity.y = PLAYER_CONFIG.jumpForce || 15;
 			this.isJumping = true;
 			this.canCutJump = true;
 			this.coyoteTimer = 0;
 			this.jumpBufferTimer = 0;
+			this.onGround = false; // Force off ground immediately
+			jumpedThisFrame = true;
 
 			if (this.isSliding) {
 				this.isSliding = false;
@@ -364,10 +400,11 @@ class Player extends MovingEntity {
 			}
 
 			// Play jump sound
-			const audio = this.audios.get('jump'); // Assuming 'jump' audio exists or we map it
+			const audio = this.audios.get('jump');
 			if (audio && !audio.isPlaying) audio.play();
 		}
 
+		// Variable height jump - cut jump short when button released
 		if (this.canCutJump && !wantsJump && this.velocity.y > 0) {
 			this.velocity.y *= (PLAYER_CONFIG.jumpCutMultiplier || 0.5);
 			this.canCutJump = false;
@@ -401,7 +438,8 @@ class Player extends MovingEntity {
 				const distance = this.currentRegion.plane.distanceToPoint(newPos);
 				
 				// Smooth ground following when on/near ground
-				if (this.velocity.y <= 0) {
+				// Don't reset velocity if we just jumped this frame
+				if (this.velocity.y <= 0 && !jumpedThisFrame) {
 					newPos.y -= distance * CONFIG.NAVMESH.HEIGHT_CHANGE_FACTOR;
 					if (Math.abs(distance) < 0.5) {
 						this.velocity.y = 0;
@@ -451,6 +489,7 @@ class Player extends MovingEntity {
 		this.jumpBufferTimer = 0;
 		this.isJumping = false;
 		this.canCutJump = false;
+		this.wasJumpPressed = false;
 		this.groundNormal.set(0, 1, 0);
 		this.slopeAngle = 0;
 		this.stamina = 100;
