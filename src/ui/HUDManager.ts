@@ -39,6 +39,9 @@ export class HUDManager {
   private damagePulseTimeout: number | null = null;
   private damageOverlayTimeout: number | null = null;
 
+  // Sprint overlay
+  private sprintOverlay: HTMLElement;
+
   constructor() {
     this.killfeed = new KillfeedManager();
     this.healthBarMask = document.getElementById('health-bar-mask')!;
@@ -72,6 +75,9 @@ export class HUDManager {
     this.vignetteDamagePulse = document.getElementById('vignette-damage-pulse')!;
     this.vignetteCritical = document.getElementById('vignette-critical')!;
 
+    // Sprint overlay
+    this.sprintOverlay = document.getElementById('sprint-overlay')!;
+
     // Hide wave display by default
     if (this.waveDisplay) this.waveDisplay.style.display = 'none';
   }
@@ -81,6 +87,18 @@ export class HUDManager {
     const pct = Math.max(0, (health / maxHealth) * 100);
     this.healthBarMask.style.width = `${pct}%`;
     this.healthText.textContent = Math.ceil(health).toString();
+
+    // Update health bar color based on percentage
+    if (pct <= 25) {
+      this.healthBarMask.style.background = 'linear-gradient(90deg, #ff6b6b, #fa5252)';
+      this.healthBarMask.style.boxShadow = '0 0 15px rgba(255, 107, 107, 0.8)';
+    } else if (pct <= 50) {
+      this.healthBarMask.style.background = 'linear-gradient(90deg, #ffd43b, #fab005)';
+      this.healthBarMask.style.boxShadow = '0 0 10px rgba(255, 212, 59, 0.6)';
+    } else {
+      this.healthBarMask.style.background = 'linear-gradient(90deg, #51cf66, #40c057)';
+      this.healthBarMask.style.boxShadow = '0 0 10px rgba(81, 207, 102, 0.5)';
+    }
 
     // Update critical vignette based on HP
     this.updateCriticalVignette(pct);
@@ -132,6 +150,15 @@ export class HUDManager {
     this.staminaText.textContent = Math.ceil(stamina).toString();
   }
 
+  public setSprintEffect(isSprinting: boolean): void {
+    if (!this.sprintOverlay) return;
+    if (isSprinting) {
+      this.sprintOverlay.classList.add('active');
+    } else {
+      this.sprintOverlay.classList.remove('active');
+    }
+  }
+
   public updateWeaponName(name: string): void {
     if (this.weaponName) this.weaponName.textContent = name;
   }
@@ -150,7 +177,13 @@ export class HUDManager {
     if (wave === this.currentWave) return;
     this.currentWave = wave;
 
-    this.waveDisplay.textContent = `WAVE ${wave}`;
+    // Update wave text inside the span (not the whole container)
+    const waveText = this.waveDisplay.querySelector('.wave-text');
+    if (waveText) {
+      waveText.textContent = `WAVE ${wave}`;
+    } else {
+      this.waveDisplay.textContent = `WAVE ${wave}`;
+    }
 
     // Trigger wave start animation
     this.waveDisplay.classList.remove('active', 'wave-start');
@@ -182,7 +215,14 @@ export class HUDManager {
   }
 
   public updateEnemiesRemaining(count: number): void {
-    if (this.enemiesDisplay) this.enemiesDisplay.textContent = `Enemies: ${count}`;
+    if (!this.enemiesDisplay) return;
+    // Update the count element inside the enemies display
+    const countEl = this.enemiesDisplay.querySelector('.enemies-count');
+    if (countEl) {
+      countEl.textContent = count.toString();
+    } else {
+      this.enemiesDisplay.textContent = `Enemies: ${count}`;
+    }
   }
 
   public showReloading(isReloading: boolean): void {
@@ -482,7 +522,14 @@ export class HUDManager {
       default: text = 'GODLIKE'; tierClass = 'impact-tier-4'; break;
     }
 
-    this.multiKillDisplay.textContent = text;
+    // Update text inside the span (if exists) or container
+    const textEl = this.multiKillDisplay.querySelector('.multikill-text');
+    if (textEl) {
+      textEl.textContent = text;
+    } else {
+      this.multiKillDisplay.textContent = text;
+    }
+    
     this.multiKillDisplay.className = ''; // Clear classes
     this.multiKillDisplay.style.opacity = '1';
 
@@ -502,7 +549,14 @@ export class HUDManager {
     if (!this.streakDisplay) return;
     if (count < 3) return; // Show from 3 hits
 
-    this.streakDisplay.textContent = `${count} HIT STREAK`;
+    // Update text inside the span (if exists) or container
+    const textEl = this.streakDisplay.querySelector('.streak-text');
+    if (textEl) {
+      textEl.textContent = `${count} HIT STREAK`;
+    } else {
+      this.streakDisplay.textContent = `${count} HIT STREAK`;
+    }
+    
     this.streakDisplay.className = '';
     this.streakDisplay.style.opacity = '1';
 

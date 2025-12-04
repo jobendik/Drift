@@ -72,8 +72,14 @@ class Player extends MovingEntity {
 	public landingImpact: number = 0;
 	public headBobTime: number = 0;
 
-	// Audio buffers (will be loaded by AudioManager or passed in)
+	// Audio state
 	public lastFootstepTime: number = 0;
+	private footstepInterval: number = 0.35; // Time between footsteps
+	private sprintFootstepInterval: number = 0.25; // Faster footsteps when sprinting
+	private wasAirborne: boolean = false; // Track if we were in the air last frame
+	private heartbeatActive: boolean = false;
+	private heartbeatAudio: any = null;
+	private audioInitialized: boolean = false;
 
 	/**
 	* Constructs a new player object.
@@ -90,7 +96,7 @@ class Player extends MovingEntity {
 		this.boundingRadius = CONFIG.PLAYER.BOUNDING_RADIUS;
 		this.height = CONFIG.PLAYER.HEAD_HEIGHT;
 		this.updateOrientation = false;
-		this.maxSpeed = CONFIG.PLAYER.MAX_SPEED;
+		this.maxSpeed = PLAYER_CONFIG.sprintSpeed || 30; // Use RIFT config for max speed, must allow sprint speed
 		this.health = CONFIG.PLAYER.MAX_HEALTH;
 		this.maxHealth = CONFIG.PLAYER.MAX_HEALTH;
 		this.isPlayer = true;
@@ -174,18 +180,8 @@ class Player extends MovingEntity {
 			if (input.left) inputDir.x -= 1;
 			if (input.right) inputDir.x += 1;
 
-			// Debug logging (sample 5% of frames to avoid spam)
-			if (Math.random() < 0.05) {
-				const horizontalSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
-				console.log('Player State:', {
-					sprint: input.sprint,
-					isSprinting: this.isSprinting,
-					speed: horizontalSpeed.toFixed(2),
-					stamina: this.stamina.toFixed(1),
-					onGround: this.onGround,
-					velocityY: this.velocity.y.toFixed(2),
-				});
-			}
+			// Track airborne state before physics
+			const wasAirborneBeforePhysics = !this.onGround;
 
 			// Run Physics Simulation
 			this.updatePhysics(
@@ -196,6 +192,17 @@ class Player extends MovingEntity {
 				input.crouch,
 				this.world.arenaObjects
 			);
+
+			// Play landing sound when we just landed
+			if (wasAirborneBeforePhysics && this.onGround) {
+				this.playLandingSound();
+			}
+
+			// Play footstep sounds while moving on ground
+			this.updateFootsteps(delta, inputDir);
+
+			// Update heartbeat for low health
+			this.updateHeartbeat();
 		}
 
 		// Sync Yuka Entity State
@@ -234,8 +241,10 @@ class Player extends MovingEntity {
 		}
 
 		// Update stamina UI if RIFT HUD is available
-		if (this.world.hudManager && this.status === STATUS_ALIVE) {
-			this.world.hudManager.updateStamina(this.stamina, PLAYER_CONFIG.maxStamina || 100);
+		if (this.world.rift && this.world.rift.hudManager && this.status === STATUS_ALIVE) {
+			this.world.rift.hudManager.updateStamina(this.stamina, PLAYER_CONFIG.maxStamina || 100);
+			// Update sprint visual effect
+			this.world.rift.hudManager.setSprintEffect(this.isSprinting);
 		}
 
 		this.mixer!.update(delta);
@@ -310,9 +319,6 @@ class Player extends MovingEntity {
 		let targetSpeed = PLAYER_CONFIG.walkSpeed || 8;
 		if (this.isSprinting) {
 			targetSpeed = PLAYER_CONFIG.sprintSpeed || 13;
-			if (this.world.debug && Math.random() < 0.01) {
-				console.log('Player sprinting! Speed:', targetSpeed, 'Stamina:', this.stamina.toFixed(1));
-			}
 		}
 
 		const isGrounded = this.onGround;
@@ -400,8 +406,7 @@ class Player extends MovingEntity {
 			}
 
 			// Play jump sound
-			const audio = this.audios.get('jump');
-			if (audio && !audio.isPlaying) audio.play();
+			this.playJumpSound();
 		}
 
 		// Variable height jump - cut jump short when button released
@@ -421,31 +426,51 @@ class Player extends MovingEntity {
 		this.onGround = false;
 		
 		if (this.world.navMesh && this.currentRegion) {
-			// Use navMesh-based collision
+			// Save Y for vertical movement (navMesh is 2D on XZ plane)
+			const savedY = newPos.y;
+			const savedVelY = this.velocity.y;
+			const isAirborne = jumpedThisFrame || this.isJumping || savedVelY > 0.1;
+			
+			// For navMesh collision, work on the XZ plane only
+			// Set Y to ground level for proper region detection
+			const groundY = this.currentRegion.plane.distanceToPoint(this.position);
+			newPos.y = this.position.y - groundY; // Project to ground for navMesh
+			
+			// Copy current position for navMesh (XZ collision)
 			this.currentPosition.copy(newPos);
 			
+			// Clamp movement against walls (XZ only)
 			this.currentRegion = this.world.navMesh.clampMovement(
 				this.currentRegion,
 				this.previousPosition,
 				this.currentPosition,
-				newPos // result vector gets clamped
+				newPos // Gets modified - XZ clamped against walls
 			);
 			
+			// Update previousPosition for next frame (use ground-projected pos)
 			this.previousPosition.copy(newPos);
 			
-			// Adjust height according to ground (like original stayInLevel)
-			if (this.currentRegion) {
-				const distance = this.currentRegion.plane.distanceToPoint(newPos);
+			if (isAirborne) {
+				// Restore Y position for airborne movement
+				newPos.y = savedY;
+				this.velocity.y = savedVelY;
 				
-				// Smooth ground following when on/near ground
-				// Don't reset velocity if we just jumped this frame
-				if (this.velocity.y <= 0 && !jumpedThisFrame) {
-					newPos.y -= distance * CONFIG.NAVMESH.HEIGHT_CHANGE_FACTOR;
-					if (Math.abs(distance) < 0.5) {
-						this.velocity.y = 0;
-						this.onGround = true;
-					}
+				// Check for landing
+				const groundHeight = this.currentRegion.plane.distanceToPoint(newPos);
+				if (groundHeight <= 0 && savedVelY <= 0) {
+					// Landed
+					newPos.y -= groundHeight;
+					this.landingImpact = Math.abs(savedVelY); // Store landing velocity for sound
+					this.velocity.y = 0;
+					this.onGround = true;
+					this.isJumping = false;
 				}
+			} else {
+				// On ground: snap to navMesh surface
+				const groundHeight = this.currentRegion.plane.distanceToPoint(newPos);
+				newPos.y -= groundHeight;
+				this.velocity.y = 0;
+				this.onGround = true;
 			}
 		} else {
 			// Fallback: simple ground plane at y=0
@@ -537,6 +562,12 @@ class Player extends MovingEntity {
 
 		this.velocity.set(0, 0, 0);
 
+		// Play death sound
+		this.playDeathSound();
+
+		// Stop heartbeat if playing
+		this.stopHeartbeat();
+
 		const animation = this.animations.get('player_death');
 		if (animation) {
 			animation.reset(); // Ensure animation starts from beginning
@@ -579,18 +610,14 @@ class Player extends MovingEntity {
 			// Add level geometry
 			if (world.level && world.level.renderComponent) {
 				obstacles.push(world.level.renderComponent);
-				console.log('Added level to obstacles:', world.level.renderComponent.name);
 			}
 
 			// Add all competitors (enemies) render components
 			world.competitors.forEach((competitor: any) => {
 				if (competitor !== this && competitor.active && competitor.renderComponent) {
 					obstacles.push(competitor.renderComponent);
-					console.log('Added competitor to obstacles:', competitor.name, 'Active:', competitor.active);
 				}
 			});
-
-			console.log('Total obstacles for raycast:', obstacles.length);
 			world.rift.handleShooting(onGround, isSprinting, velocity, obstacles);
 
 			return this;
@@ -852,11 +879,8 @@ class Player extends MovingEntity {
 					return true;
 				}
 
-				// play audio
-
-				const audio = this.audios.get('impact' + MathUtils.randInt(1, 7));
-				if (audio && audio.isPlaying === true) audio.stop();
-				if (audio) audio.play();
+				// Play damage grunt sound via RIFT audio manager
+				this.playDamageGrunt();
 
 				// reduce health (clamp to 0 minimum)
 
@@ -948,6 +972,150 @@ class Player extends MovingEntity {
 
 		return Math.atan2(det, dot);
 
+	}
+
+	// ========== PLAYER AUDIO METHODS ==========
+
+	/**
+	 * Updates footstep sounds based on movement.
+	 */
+	private updateFootsteps(delta: number, inputDir: Vector3): void {
+		this.lastFootstepTime += delta;
+
+		// Only play footsteps when on ground and moving
+		const isMoving = inputDir.length() > 0.1;
+		if (!this.onGround || !isMoving) {
+			return;
+		}
+
+		const interval = this.isSprinting ? this.sprintFootstepInterval : this.footstepInterval;
+
+		if (this.lastFootstepTime >= interval) {
+			this.lastFootstepTime = 0;
+			this.playFootstepSound();
+		}
+	}
+
+	/**
+	 * Plays a random footstep sound.
+	 */
+	private playFootstepSound(): void {
+		if (!this.world.rift?.audioManager) return;
+
+		// Pick random footstep (Concrete-Run-1 through 6)
+		const footstepNum = MathUtils.randInt(1, 6);
+		const footstepPath = `/assets/audio/sfx/player/Concrete-Run-${footstepNum}.mp3_${this.getFootstepHash(footstepNum)}.mp3`;
+		
+		this.world.rift.audioManager.playSound(footstepPath, 'sfx', { 
+			volume: this.isSprinting ? 0.8 : 0.6 
+		});
+	}
+
+	/**
+	 * Returns the hash suffix for footstep files.
+	 */
+	private getFootstepHash(num: number): string {
+		const hashes: { [key: number]: string } = {
+			1: 'c0954406',
+			2: 'bcd23528',
+			3: '721706e6',
+			4: '4f98c76e',
+			5: '121ee958',
+			6: 'a62fc298'
+		};
+		return hashes[num] || 'c0954406';
+	}
+
+	/**
+	 * Plays a landing sound based on impact velocity.
+	 */
+	private playLandingSound(): void {
+		if (!this.world.rift?.audioManager) return;
+
+		// Pick random landing sound
+		const landNum = MathUtils.randInt(1, 2);
+		const hash = landNum === 1 ? '58b9ba36' : 'de259dd1';
+		const landPath = `/assets/audio/sfx/player/Land-${landNum}.mp3_${hash}.mp3`;
+		
+		// Louder for harder impacts
+		const volume = Math.min(1.0, 0.5 + (this.landingImpact / 30) * 0.5);
+		
+		this.world.rift.audioManager.playSound(landPath, 'sfx', { volume });
+	}
+
+	/**
+	 * Plays jump sound.
+	 */
+	private playJumpSound(): void {
+		if (!this.world.rift?.audioManager) return;
+
+		const jumpPath = '/assets/audio/sfx/player/Jump.mp3_523dd26f.mp3';
+		this.world.rift.audioManager.playSound(jumpPath, 'sfx', { volume: 0.7 });
+	}
+
+	/**
+	 * Plays a random damage grunt sound.
+	 */
+	private playDamageGrunt(): void {
+		console.log('playDamageGrunt called, rift:', !!this.world.rift, 'audioManager:', !!this.world.rift?.audioManager);
+		if (!this.world.rift?.audioManager) return;
+
+		const gruntNum = MathUtils.randInt(1, 3);
+		const hashes: { [key: number]: string } = {
+			1: '1cd206a1',
+			2: '17321d9c',
+			3: '31597fb1'
+		};
+		const gruntPath = `/assets/audio/sfx/player/Echo-Grunt-${gruntNum}.mp3_${hashes[gruntNum]}.mp3`;
+		console.log('Playing grunt:', gruntPath);
+		
+		this.world.rift.audioManager.playSound(gruntPath, 'sfx', { volume: 1.0 });
+	}
+
+	/**
+	 * Plays death sound.
+	 */
+	private playDeathSound(): void {
+		console.log('playDeathSound called, rift:', !!this.world.rift, 'audioManager:', !!this.world.rift?.audioManager);
+		if (!this.world.rift?.audioManager) return;
+
+		const deathPath = '/assets/audio/sfx/player/Echo-Death-1.mp3_4264c0fa.mp3';
+		console.log('Playing death sound:', deathPath);
+		this.world.rift.audioManager.playSound(deathPath, 'sfx', { volume: 1.0 });
+	}
+
+	/**
+	 * Updates heartbeat sound based on health level.
+	 */
+	private updateHeartbeat(): void {
+		if (!this.world.rift?.audioManager) return;
+
+		const healthPercent = this.health / this.maxHealth;
+		const shouldPlayHeartbeat = healthPercent <= 0.25 && healthPercent > 0;
+
+		if (shouldPlayHeartbeat && !this.heartbeatActive) {
+			// Start heartbeat
+			console.log('Starting heartbeat, health:', healthPercent);
+			this.heartbeatActive = true;
+			const heartbeatPath = '/assets/audio/sfx/player/Heart-Beat.mp3_1e759b97.mp3';
+			this.heartbeatAudio = this.world.rift.audioManager.playSound(heartbeatPath, 'sfx', { 
+				volume: 0.8, 
+				loop: true 
+			});
+		} else if (!shouldPlayHeartbeat && this.heartbeatActive) {
+			this.stopHeartbeat();
+		}
+	}
+
+	/**
+	 * Stops the heartbeat sound.
+	 */
+	private stopHeartbeat(): void {
+		this.heartbeatActive = false;
+		if (this.heartbeatAudio && this.heartbeatAudio.isPlaying) {
+			this.heartbeatAudio.stop();
+		}
+		this.heartbeatAudio = null;
 	}
 
 }

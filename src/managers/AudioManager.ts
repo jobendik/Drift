@@ -28,7 +28,7 @@ export class AudioManager {
   private volumes = {
     master: 1.0,
     music: 0.5,
-    sfx: 0.8,
+    sfx: 1.0,
     ambient: 0.6,
     voice: 1.0,
   };

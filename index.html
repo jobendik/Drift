@@ -4,11 +4,11 @@
 		<title>DRIFT</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="stylesheet" type="text/css" href="/style/main.css?v=2">
-		<link rel="stylesheet" type="text/css" href="/style/rift-hud.css">
+		<link rel="stylesheet" type="text/css" href="/style/main.css?v=3">
+		<link rel="stylesheet" type="text/css" href="/style/rift-hud.css?v=3">
 		<link rel="stylesheet" type="text/css" href="/style/rift-lobby.css">
 		<link rel="shortcut icon" type="image/x-icon" href="/assets/textures/ui/drift_logo.png">
-		<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
 	</head>
 <body>
 
@@ -32,41 +32,62 @@
 
 	<!-- Main HUD Container -->
 	<div id="hud">
+		<!-- Bottom Bar Background -->
+		<div id="bottom-bar">
+		</div>
+
 		<!-- Status Bars (Bottom Left) -->
 		<div id="status-bars">
 			<!-- Health Bar -->
-			<div id="health-wrapper">
-				<div class="icon">❤</div>
-				<div class="bar-bg">
-					<div id="health-bar-mask"></div>
+			<div id="health-wrapper" class="status-bar-container">
+				<img src="/assets/images/ui/Health-icon.png_2d41f9ce.png" alt="" class="status-icon">
+				<div class="bar-container">
+					<img src="/assets/images/ui/Health-Bar-Background.png_b2dd7200.png" alt="" class="bar-bg-img">
+					<div id="health-bar-mask" class="bar-fill health-fill"></div>
+					<img src="/assets/images/ui/Health-Bar-Lines.png_2456983b.png" alt="" class="bar-lines">
 				</div>
-				<span id="health-text-value">100</span>
+				<span id="health-text-value" class="status-value">100</span>
+				<div id="health-regen-indicator">
+					<img src="/assets/images/ui/Health-Regen.png_734d8efb.png" alt="">
+				</div>
 			</div>
 
 			<!-- Armor Bar -->
-			<div id="armor-wrapper">
-				<div class="icon">🛡</div>
-				<div class="bar-bg">
-					<div id="armor-bar-mask"></div>
+			<div id="armor-wrapper" class="status-bar-container">
+				<div class="status-icon armor-icon">🛡</div>
+				<div class="bar-container">
+					<div class="bar-bg"></div>
+					<div id="armor-bar-mask" class="bar-fill armor-fill"></div>
 				</div>
-				<span id="armor-text-value">0</span>
+				<span id="armor-text-value" class="status-value">0</span>
 			</div>
 
 			<!-- Stamina Bar -->
-			<div id="stamina-wrapper">
-				<div class="icon">⚡</div>
-				<div class="bar-bg">
-					<div id="stamina-bar-mask"></div>
+			<div id="stamina-wrapper" class="status-bar-container">
+				<div class="status-icon stamina-icon">⚡</div>
+				<div class="bar-container">
+					<div class="bar-bg"></div>
+					<div id="stamina-bar-mask" class="bar-fill stamina-fill"></div>
 				</div>
-				<span id="stamina-text-value">100</span>
+				<span id="stamina-text-value" class="status-value">100</span>
 			</div>
 		</div>
 
 		<!-- Weapon Info (Bottom Right) -->
 		<div id="weapon-info">
 			<div id="weapon-name">AK-47</div>
-			<div id="ammo-display">30 / 120</div>
-			<div id="reload-indicator">RELOADING...</div>
+			<div id="ammo-container">
+				<div id="ammo-content">
+					<img src="/assets/images/ui/Bullets-icon.png_7178a5ce.png" alt="" class="bullets-icon">
+					<span id="ammo-display">30 / 120</span>
+				</div>
+			</div>
+			<div id="reload-indicator">
+				<span class="reload-text">RELOADING</span>
+				<div class="reload-dots">
+					<span></span><span></span><span></span>
+				</div>
+			</div>
 		</div>
 
 		<!-- Crosshair (Center) -->
@@ -75,10 +96,14 @@
 			<div id="cross-bottom"></div>
 			<div id="cross-left"></div>
 			<div id="cross-right"></div>
+			<div id="cross-center"></div>
 		</div>
 
 		<!-- Sniper Scope Overlay -->
-		<div id="sniper-scope"></div>
+		<div id="sniper-scope">
+			<div class="scope-line-h"></div>
+			<div class="scope-line-v"></div>
+		</div>
 
 		<!-- Hitmarker (Center) -->
 		<div id="hitmarker">
@@ -91,6 +116,11 @@
 		</div>
 		<div id="headshot-icon">
 			<img src="/assets/images/ui/Headshot-Icon.png_ca1ab804.png" alt="Headshot">
+		</div>
+
+		<!-- Death Icon (shown on kill) -->
+		<div id="death-icon">
+			<img src="/assets/images/ui/Death-Icon.png_76e0217b.png" alt="Death">
 		</div>
 
 		<!-- Killfeed (Top Right) -->
@@ -109,16 +139,40 @@
 		<div id="health" style="display: none;"></div>
 
 		<!-- Wave/Score Display (Top Center) -->
-		<div id="wave-display"></div>
-		<div id="score-display">0</div>
-		<div id="enemies-remaining">Enemies: 0</div>
+		<div id="wave-display">
+			<img src="/assets/images/ui/Rectangle-Skew.png_8cb3987e.png" alt="" class="wave-bg">
+			<span class="wave-text">WAVE 1</span>
+		</div>
+		<div id="score-container">
+			<span id="score-display">0</span>
+		</div>
+		<div id="enemies-remaining">
+			<span class="enemies-label">ENEMIES</span>
+			<span class="enemies-count">0</span>
+		</div>
 
-		<!-- Multi-Kill & Streak Messages (Right Side) -->
-		<div id="multikill-display"></div>
-		<div id="streak-display"></div>
+		<!-- Objective Label (Top) -->
+		<div id="objective-label">
+			<img src="/assets/images/ui/Objective-Label.png_ea20a145.png" alt="" class="objective-bg">
+			<span class="objective-text">ELIMINATE ALL HOSTILES</span>
+		</div>
+
+		<!-- Multi-Kill & Streak Messages (Center Right) -->
+		<div id="combat-feedback">
+			<div id="multikill-display">
+				<img src="/assets/images/ui/Kill-Drilled.png_34c2515b.png" alt="" class="kill-effect">
+				<span class="multikill-text"></span>
+			</div>
+			<div id="streak-display">
+				<span class="streak-text"></span>
+			</div>
+		</div>
 
 		<!-- Powerup Indicator (Top Left) -->
-		<div id="powerup-indicator"></div>
+		<div id="powerup-indicator">
+			<img src="/assets/images/ui/Notification-Mark.png_78660ebf.png" alt="" class="powerup-bg">
+			<span class="powerup-text"></span>
+		</div>
 
 		<!-- Message Display (Center) -->
 		<div id="message-display"></div>
@@ -128,9 +182,63 @@
 		<div id="vignette-damage-pulse"></div>
 		<div id="vignette-critical"></div>
 
-		<!-- Damage Direction Overlay -->
+		<!-- Damage Direction Indicators (All 4 directions) -->
 		<div id="damage-overlay">
 			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="Damage">
+		</div>
+		<div id="damage-indicator-top" class="damage-indicator">
+			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="">
+		</div>
+		<div id="damage-indicator-bottom" class="damage-indicator">
+			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="">
+		</div>
+		<div id="damage-indicator-left" class="damage-indicator">
+			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="">
+		</div>
+		<div id="damage-indicator-right" class="damage-indicator">
+			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="">
+		</div>
+
+		<!-- Muzzle Flash Overlay -->
+		<div id="muzzle-flash-overlay">
+			<img src="/assets/images/ui/muzzle.png_19188667.png" alt="">
+		</div>
+
+		<!-- Explosion Effect Overlay -->
+		<div id="explosion-overlay">
+			<img src="/assets/images/ui/Explosion.png_0d506ede.png" alt="">
+		</div>
+
+		<!-- Sprint Speed Lines Overlay -->
+		<div id="sprint-overlay">
+			<div class="speed-line speed-line-1"></div>
+			<div class="speed-line speed-line-2"></div>
+			<div class="speed-line speed-line-3"></div>
+			<div class="speed-line speed-line-4"></div>
+		</div>
+
+		<!-- Hit Impact Overlay (screen center flash) -->
+		<div id="hit-impact-overlay">
+			<img src="/assets/images/ui/Hit-Impact.png_3363db53.png" alt="">
+		</div>
+
+		<!-- Skull Death Animation -->
+		<div id="skull-death-anim" class="hidden">
+			<div class="skull-sprite"></div>
+		</div>
+
+		<!-- Selection/UI Elements -->
+		<div id="selection-indicators" class="hidden">
+			<img src="/assets/images/ui/Selection-Piece.png_5c011564.png" alt="" class="selection-tl">
+			<img src="/assets/images/ui/Selection-Piece.png_5c011564.png" alt="" class="selection-tr">
+			<img src="/assets/images/ui/Selection-Piece.png_5c011564.png" alt="" class="selection-bl">
+			<img src="/assets/images/ui/Selection-Piece.png_5c011564.png" alt="" class="selection-br">
+		</div>
+
+		<!-- Victory/Round End Decorations -->
+		<div id="victory-decorations" class="hidden">
+			<img src="/assets/images/ui/Victory-Top-Line.png_cb1d2f46.png" alt="" class="victory-top">
+			<img src="/assets/images/ui/Victory-Bottom-Line.png_f1e04174.png" alt="" class="victory-bottom">
 		</div>
 	</div>
 

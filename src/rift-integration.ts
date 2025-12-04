@@ -66,8 +66,66 @@ export class RIFTIntegration {
     this.hudManager = new HUDManager();
     this.killfeedManager = new KillfeedManager();
 
+    // Preload player sounds
+    this.preloadPlayerSounds();
+    
+    // Preload enemy sounds
+    this.preloadEnemySounds();
+
     this.isInitialized = true;
     console.log('RIFT Integration Initialized');
+  }
+
+  /**
+   * Preload player audio files for instant playback
+   */
+  private preloadPlayerSounds(): void {
+    const playerSounds = [
+      // Footsteps
+      '/assets/audio/sfx/player/Concrete-Run-1.mp3_c0954406.mp3',
+      '/assets/audio/sfx/player/Concrete-Run-2.mp3_bcd23528.mp3',
+      '/assets/audio/sfx/player/Concrete-Run-3.mp3_721706e6.mp3',
+      '/assets/audio/sfx/player/Concrete-Run-4.mp3_4f98c76e.mp3',
+      '/assets/audio/sfx/player/Concrete-Run-5.mp3_121ee958.mp3',
+      '/assets/audio/sfx/player/Concrete-Run-6.mp3_a62fc298.mp3',
+      // Jump/Land
+      '/assets/audio/sfx/player/Jump.mp3_523dd26f.mp3',
+      '/assets/audio/sfx/player/Land-1.mp3_58b9ba36.mp3',
+      '/assets/audio/sfx/player/Land-2.mp3_de259dd1.mp3',
+      // Grunts/Death
+      '/assets/audio/sfx/player/Echo-Grunt-1.mp3_1cd206a1.mp3',
+      '/assets/audio/sfx/player/Echo-Grunt-2.mp3_17321d9c.mp3',
+      '/assets/audio/sfx/player/Echo-Grunt-3.mp3_31597fb1.mp3',
+      '/assets/audio/sfx/player/Echo-Death-1.mp3_4264c0fa.mp3',
+      // Heartbeat
+      '/assets/audio/sfx/player/Heart-Beat.mp3_1e759b97.mp3'
+    ];
+    
+    this.audioManager.preloadAudios(playerSounds);
+    console.log('Player sounds queued for preloading');
+  }
+
+  /**
+   * Preload enemy audio files for instant playback
+   */
+  private preloadEnemySounds(): void {
+    const enemySounds = [
+      // Kulu (male enemy) sounds
+      '/assets/audio/sfx/enemy/Kulu-Death-1.mp3_d65e968a.mp3',
+      '/assets/audio/sfx/enemy/Kulu-Grunt-1.mp3_ea942b67.mp3',
+      '/assets/audio/sfx/enemy/Kulu-Grunt-2.mp3_8e323b62.mp3',
+      '/assets/audio/sfx/enemy/Kulu-Grunt-3.mp3_5bae51a4.mp3',
+      '/assets/audio/sfx/enemy/Kulu-Jump-1.mp3_3aef7e5f.mp3',
+      '/assets/audio/sfx/enemy/Kulu-Jump-2.mp3_8cba70b6.mp3',
+      // Female enemy sounds
+      '/assets/audio/sfx/enemy/Female-Death-1.mp3_37cc105e.mp3',
+      '/assets/audio/sfx/enemy/Female-Grunt-1.mp3_5f82c672.mp3',
+      '/assets/audio/sfx/enemy/Female-Grunt-2.mp3_b787f958.mp3',
+      '/assets/audio/sfx/enemy/Female-Grunt-3.mp3_4d6460fd.mp3',
+    ];
+    
+    this.audioManager.preloadAudios(enemySounds);
+    console.log('Enemy sounds queued for preloading');
   }
 
   /**
@@ -164,9 +222,10 @@ export class RIFTIntegration {
       // Spawn effects
       this.decalSystem.createDecal(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
       this.particleSystem.spawnMaterialImpact(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
+      // Play surface impact sound at reduced volume
       this.impactSystem.playSurfaceImpact(hit.point, material);
 
-      // Apply damage if it's an entity
+      // Apply damage if it's a damageable entity (enemy, player, etc.)
       let entity = hitObject.userData.entity;
       if (!entity) {
         hitObject.traverseAncestors((ancestor: any) => {
@@ -176,7 +235,8 @@ export class RIFTIntegration {
         });
       }
 
-      if (entity && entity !== shooter) {
+      // Only process as a hit if the entity has health (is damageable) and isn't the shooter
+      if (entity && entity !== shooter && typeof entity.health === 'number') {
         console.log('Enemy hit entity:', entity.name, 'Health:', entity.health, 'Damage:', damage);
         
         // Apply damage via message system
@@ -258,9 +318,10 @@ export class RIFTIntegration {
       // Use spawnMaterialImpact for surface hits
       this.particleSystem.spawnMaterialImpact(hit.point, hit.face?.normal || new THREE.Vector3(0, 1, 0), material);
       
+      // Play surface impact sound at reduced volume
       this.impactSystem.playSurfaceImpact(hit.point, material);
 
-      // Apply damage if it's an entity
+      // Apply damage if it's a damageable entity (enemy, player, etc.)
       // Check the hit object and all its ancestors for userData.entity
       let entity = hitObject.userData.entity;
       if (!entity) {
@@ -271,7 +332,9 @@ export class RIFTIntegration {
         });
       }
 
-      if (entity) {
+      // Only process as a hit if the entity has health (is damageable)
+      // This excludes level geometry which has userData.entity but no health property
+      if (entity && typeof entity.health === 'number') {
         console.log('HIT ENTITY:', entity.name, 'Health:', entity.health);
         
         // Headshot detection - check if hit point is in the upper part of the entity
@@ -306,14 +369,18 @@ export class RIFTIntegration {
         this.hudManager.showHitmarker(isKill);
         this.hudManager.showHitFeedback(isKill, isHeadshot);
         
-        // Show headshot/kill icons
+        // Show headshot/kill icons and play appropriate sounds
         if (isKill) {
-          this.impactSystem.playDeathImpact(hit.point);
+          // Play Kulu death sound instead of generic death impact
+          this.playEnemyDeathSound(hit.point);
           if (isHeadshot) {
             this.hudManager.showHeadshotIcon();
           } else {
             this.hudManager.showKillIcon();
           }
+        } else {
+          // Play grunt sound when enemy takes damage but doesn't die
+          this.playEnemyGruntSound(hit.point);
         }
         
         // Also spawn blood/impact effect for body hit
@@ -398,5 +465,35 @@ export class RIFTIntegration {
    */
   public getShakeOffset(): THREE.Vector3 {
     return this.screenEffects.getShakeOffset();
+  }
+
+  /**
+   * Play enemy death sound (Kulu death)
+   */
+  private playEnemyDeathSound(position: THREE.Vector3): void {
+    const deathPath = '/assets/audio/sfx/enemy/Kulu-Death-1.mp3_d65e968a.mp3';
+    this.audioManager.playPositionalSound(deathPath, position, 'sfx', { 
+      volume: 1.5,
+      refDistance: 12,
+      maxDistance: 80
+    });
+  }
+
+  /**
+   * Play enemy grunt sound when taking damage
+   */
+  private playEnemyGruntSound(position: THREE.Vector3): void {
+    const gruntNum = Math.floor(Math.random() * 3) + 1;
+    const hashes: { [key: number]: string } = {
+      1: 'ea942b67',
+      2: '8e323b62',
+      3: '5bae51a4'
+    };
+    const gruntPath = `/assets/audio/sfx/enemy/Kulu-Grunt-${gruntNum}.mp3_${hashes[gruntNum]}.mp3`;
+    this.audioManager.playPositionalSound(gruntPath, position, 'sfx', { 
+      volume: 1.3,
+      refDistance: 10,
+      maxDistance: 60
+    });
   }
 }

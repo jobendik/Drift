@@ -55,6 +55,11 @@ class World {
 	private readonly fovLerpSpeed: number = 12; // Higher = faster transition
 	public zoomTransitionProgress: number = 0;
 
+	// Convenience getter for HUD Manager
+	public get hudManager() {
+		return this.rift?.hudManager;
+	}
+
 
 
 	public entityManager: EntityManager;
@@ -260,7 +265,7 @@ class World {
 						// For level hits, calculate normal for decals
 						if (entity === this.level) {
 							// Approximate normal from ray direction (will be improved with proper BVH normal extraction)
-							hitNormal = new Vector3().copy(ray.direction).negate().normalize();
+							hitNormal = new Vector3().copy(ray.direction).multiplyScalar(-1).normalize();
 						}
 
 					}
@@ -682,6 +687,11 @@ class World {
 
 		this.player = player;
 
+		// Start default game mode now that player exists
+		if (this.gameModeManager) {
+			this.gameModeManager.setMode(GameModeType.WAVE_SURVIVAL);
+		}
+
 		return this;
 
 	}
@@ -815,6 +825,8 @@ class World {
 		// Equip default weapon (AK47)
 		this.rift.weaponSystem.switchWeapon(0);
 
+		// Note: Game mode initialization moved to _initPlayer() since it requires player to exist
+
 		console.log('RIFT Integration initialized successfully');
 
 		// Remove any old Drift weapon meshes from the scene
@@ -917,6 +929,7 @@ class World {
 					// Environment hit - bullet hole and sparks
 					this.rift.decalSystem.createDecal(threeHitPoint, threeNormal, SurfaceMaterial.ROCK);
 					this.rift.particleSystem.spawnMaterialImpact(threeHitPoint, threeNormal, SurfaceMaterial.ROCK);
+					// Play surface impact sound at reduced volume
 					this.rift.impactSystem.playSurfaceImpact(threeHitPoint, SurfaceMaterial.ROCK);
 				}
 			}

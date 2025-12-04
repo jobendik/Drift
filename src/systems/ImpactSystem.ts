@@ -213,7 +213,7 @@ export class ImpactSystem {
     const sound = new THREE.PositionalAudio(this.audioListener);
     sound.setBuffer(this.audioBuffers.shellDrop);
     sound.setRefDistance(2);
-    sound.setVolume(0.25 * Math.max(0.2, Math.min(1.0, volumeScale))); // Subtle volume
+    sound.setVolume(0.125 * Math.max(0.2, Math.min(1.0, volumeScale))); // Reduced by 50%
     sound.setPlaybackRate(1.8 + Math.random() * 0.8); // Varied pitch for natural sound
     sound.setLoop(false);
 
@@ -283,7 +283,7 @@ export class ImpactSystem {
 
     sound.setBuffer(randomBuffer);
     sound.setRefDistance(10);
-    sound.setVolume(volume * 1.3); // Punchy and exaggerated
+    sound.setVolume(volume * 0.5); // Subtle surface impacts - reduced to not overpower weapon sounds
     sound.setLoop(false);
 
     const temp = new THREE.Object3D();

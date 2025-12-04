@@ -8,23 +8,23 @@ export const PLAYER_CONFIG: PlayerConfig = {
   maxStamina: 100,
   height: 1.7,
   walkSpeed: 8,
-  sprintSpeed: 16, // Increased from 13 to make sprint more noticeable
-  jumpForce: 15, // Increased from 12 for higher jumps
-  gravity: 35,
-  groundAccel: 80, // Increased from 50 for faster sprint acceleration
+  sprintSpeed: 14, // Good sprint speed - 1.75x walk speed
+  jumpForce: 12, // Moderate jump height
+  gravity: 30, // Balanced gravity
+  groundAccel: 80, // Responsive acceleration
   airAccel: 20,
-  groundDecel: 30,
-  airDecel: 5,
+  groundDecel: 40,
+  airDecel: 8,
   jumpBuffer: 0.1,
   coyoteTime: 0.15,
   jumpCutMultiplier: 0.5,
   stepHeight: 0.5,
-  staminaDrain: 20,
+  staminaDrain: 18,
   staminaRegen: 30,
-  slideSpeed: 18,
+  slideSpeed: 16,
   slideDuration: 1.0,
   slideFriction: 2.5,
-  slideCooldown: 1.0,
+  slideCooldown: 0.8,
 };
 
 export const CAMERA_CONFIG: CameraConfig = {
