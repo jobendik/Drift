@@ -1,4 +1,4 @@
-import { Vector3, MathUtils, GameEntity } from 'yuka';
+import { Vector3, MathUtils } from 'yuka';
 import { FuzzyVariable, LeftShoulderFuzzySet, TriangularFuzzySet, RightShoulderFuzzySet, FuzzyRule, FuzzyAND, FuzzyModule } from 'yuka';
 import { CONFIG } from './Config';
 import { WEAPON_TYPES_BLASTER, WEAPON_TYPES_SHOTGUN, WEAPON_TYPES_ASSAULT_RIFLE, WEAPON_STATUS_OUT_OF_AMMO } from './Constants';

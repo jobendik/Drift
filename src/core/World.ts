@@ -7,13 +7,13 @@ import { AssetManager } from './AssetManager';
 import { SpawningManager } from './SpawningManager';
 import { UIManager } from './UIManager';
 import { FirstPersonControls } from '../controls/FirstPersonControls';
-import { NavMeshUtils } from '../etc/NavMeshUtils';
-import { SceneUtils } from '../etc/SceneUtils';
+import { NavMeshUtils } from '../utils/NavMeshUtils';
+import { SceneUtils } from '../utils/SceneUtils';
 import { Level } from '../entities/Level';
 import { Enemy } from '../entities/Enemy';
 import { Player } from '../entities/Player';
 import { Bullet } from '../weapons/Bullet';
-import { PathPlanner } from '../etc/PathPlanner';
+import { PathPlanner } from '../utils/PathPlanner';
 import { Sky } from '../effects/Sky';
 import { CONFIG } from './Config';
 
@@ -46,6 +46,14 @@ class World {
 	// Mouse tracking for weapon system
 	private mouseMovement: { x: number; y: number } = { x: 0, y: 0 };
 	private headBobTime: number = 0;
+
+	// Zoom animation state
+	private targetFOV: number = 75;
+	private currentFOV: number = 75;
+	private readonly baseFOV: number = 75;
+	private readonly zoomedFOV: number = 15;
+	private readonly fovLerpSpeed: number = 12; // Higher = faster transition
+	public zoomTransitionProgress: number = 0;
 
 
 
@@ -783,6 +791,15 @@ class World {
 			}
 		});
 
+		// Setup zoom callback for sniper scope overlay
+		this.rift.weaponSystem.setZoomCallback((isZoomed) => {
+			// Set target FOV for smooth interpolation
+			this.targetFOV = isZoomed ? this.zoomedFOV : this.baseFOV;
+			
+			// Toggle HUD sniper scope overlay (CSS handles fade animation)
+			this.rift.hudManager.toggleScope(isZoomed);
+		});
+
 		// Equip default weapon (AK47)
 		this.rift.weaponSystem.switchWeapon(0);
 
@@ -961,6 +978,16 @@ class World {
 	*/
 	private _updateRIFT(delta: number): void {
 		if (!this.rift) return;
+
+		// Smooth FOV interpolation for zoom animation
+		if (Math.abs(this.currentFOV - this.targetFOV) > 0.01) {
+			this.currentFOV += (this.targetFOV - this.currentFOV) * Math.min(1, delta * this.fovLerpSpeed);
+			this.camera.fov = this.currentFOV;
+			this.camera.updateProjectionMatrix();
+			
+			// Track zoom progress for other effects (0 = unzoomed, 1 = zoomed)
+			this.zoomTransitionProgress = 1 - (this.currentFOV - this.zoomedFOV) / (this.baseFOV - this.zoomedFOV);
+		}
 
 		// Track head bob time for weapon animation
 		const speed = this.player?.velocity ?

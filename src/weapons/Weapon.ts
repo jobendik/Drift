@@ -122,7 +122,7 @@ class Weapon extends GameEntity {
 	* @param {Number} distance - The distance to the target.
 	* @return {Number} A score between 0 and 1 representing the desirability.
 	*/
-	getDesirability(distance: number) {
+	getDesirability(_distance: number) {
 
 		return 0;
 
@@ -196,7 +196,7 @@ class Weapon extends GameEntity {
 	* @param {Vector3} targetPosition - The target position.
 	* @return {Weapon} A reference to this weapon.
 	*/
-	shoot(targetPosition: any) { }
+	shoot(_targetPosition: any) { }
 
 	/**
 	* Update method of this weapon.

@@ -2,7 +2,7 @@ import { Vehicle, Regulator, Think, FollowPathBehavior, OnPathBehavior, SeekBeha
 import { MESSAGE_HIT, MESSAGE_DEAD, STATUS_ALIVE, STATUS_DYING, STATUS_DEAD, WEAPON_TYPES_ASSAULT_RIFLE, WEAPON_TYPES_SHOTGUN, HEALTH_PACK } from '../core/Constants';
 import { AttackEvaluator } from '../evaluators/AttackEvaluator';
 import { ExploreEvaluator } from '../evaluators/ExploreEvaluator';
-import { CharacterBounds } from '../etc/CharacterBounds';
+import { CharacterBounds } from '../utils/CharacterBounds';
 import { WeaponSystem } from '../core/WeaponSystem';
 import { TargetSystem } from '../core/TargetSystem';
 import { CONFIG } from '../core/Config';
@@ -93,6 +93,12 @@ class Enemy extends Vehicle {
 	// RIFT Integration
 	public riftWeaponSystem: RIFTWeaponSystem | null = null;
 	public enemyCamera: ThreeCamera | null = null; // Virtual camera for weapon rendering
+
+	// Getter for protected _renderComponent from Yuka's GameEntity
+	public get renderComponent(): Object3D | null {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (this as any)._renderComponent || null;
+	}
 
 	public pathHelper: any;
 	public hitboxHelper: any;
@@ -902,9 +908,9 @@ class Enemy extends Vehicle {
 		let handBone: any = null;
 		let headBone: any = null;
 		
-		if (this._renderComponent) {
+		if (this.renderComponent) {
 			// Try to find head and hand bones in the skeleton
-			this._renderComponent.traverse((child: any) => {
+			this.renderComponent.traverse((child: any) => {
 				if (child.isBone) {
 					const boneName = child.name.toLowerCase();
 					if (boneName.includes('head')) {
@@ -928,7 +934,7 @@ class Enemy extends Vehicle {
 
 			// If we found a head bone, attach camera to it
 			// Otherwise attach to the root render component
-			const attachPoint = headBone || this._renderComponent;
+			const attachPoint = headBone || this.renderComponent;
 			attachPoint.add(this.enemyCamera);
 			
 			// Position camera slightly forward and up if attached to root
@@ -957,12 +963,12 @@ class Enemy extends Vehicle {
 			// Attach weapon to hand bone
 			this.riftWeaponSystem.setThirdPersonMode(handBone);
 			console.log(`Enemy ${this.name}: Weapon attached to hand bone: ${handBone.name}`);
-		} else if (this._renderComponent) {
+		} else if (this.renderComponent) {
 			// Create a weapon mount point if no hand bone found
 			const weaponMount = new Object3D();
 			weaponMount.name = 'weapon_mount';
 			weaponMount.position.set(0.3, CONFIG.BOT.HEAD_HEIGHT * 0.6, 0.2); // Position at right side, chest height
-			this._renderComponent.add(weaponMount);
+			this.renderComponent.add(weaponMount);
 			this.riftWeaponSystem.setThirdPersonMode(weaponMount);
 			console.log(`Enemy ${this.name}: Weapon attached to fallback mount point`);
 		}
@@ -1000,12 +1006,13 @@ class Enemy extends Vehicle {
 	* @param {Vector3} targetPosition - The target position in Yuka space.
 	* @return {Enemy} A reference to this game entity.
 	*/
+	// @ts-expect-error Method reserved for future use
 	private _shootRIFT(targetPosition: Vector3): this {
 		if (!this.riftWeaponSystem || !this.enemyCamera) return this;
 
 		// Update camera orientation to match enemy
-		if (this._renderComponent) {
-			this._renderComponent.updateMatrixWorld(true);
+		if (this.renderComponent) {
+			this.renderComponent.updateMatrixWorld(true);
 			this.enemyCamera.updateMatrixWorld(true);
 			
 			// Make camera look at target
@@ -1026,19 +1033,19 @@ class Enemy extends Vehicle {
 			const obstacles: any[] = [];
 			
 			// Add level
-			if (this.world.level && this.world.level._renderComponent) {
-				obstacles.push(this.world.level._renderComponent);
+			if (this.world.level && this.world.level.renderComponent) {
+				obstacles.push(this.world.level.renderComponent);
 			}
 
 			// Add player
-			if (this.world.player && this.world.player._renderComponent) {
-				obstacles.push(this.world.player._renderComponent);
+			if (this.world.player && this.world.player.renderComponent) {
+				obstacles.push(this.world.player.renderComponent);
 			}
 
 			// Add other competitors (excluding self)
 			for (const competitor of this.world.competitors) {
-				if (competitor !== this && competitor._renderComponent && competitor.status === STATUS_ALIVE) {
-					obstacles.push(competitor._renderComponent);
+				if (competitor !== this && competitor.renderComponent && competitor.status === STATUS_ALIVE) {
+					obstacles.push(competitor.renderComponent);
 				}
 			}
 

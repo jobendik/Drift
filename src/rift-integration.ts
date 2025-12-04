@@ -10,7 +10,7 @@ import { HUDManager } from './ui/HUDManager';
 import { KillfeedManager } from './ui/KillfeedManager';
 
 import { AudioManager } from './managers/AudioManager';
-import { MESSAGE_HIT, STATUS_ALIVE } from './core/Constants';
+import { MESSAGE_HIT } from './core/Constants';
 
 /**
  * RIFT Integration Manager

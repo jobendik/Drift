@@ -1,5 +1,5 @@
-import { GameEntity, MovingEntity, Vector3, AABB, MathUtils, Ray } from 'yuka';
-import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio, Vector3 as ThreeVector3 } from 'three';
+import { GameEntity, MovingEntity, Vector3, AABB, MathUtils } from 'yuka';
+import { LoopOnce, AnimationMixer, AnimationAction, PositionalAudio, Vector3 as ThreeVector3, Object3D } from 'three';
 import { WeaponSystem } from '../core/WeaponSystem';
 import { CONFIG } from '../core/Config';
 import { PLAYER_CONFIG } from '../config/gameConfig';
@@ -44,6 +44,12 @@ class Player extends MovingEntity {
 	public maxSpeed: number;
 	public name: string;
 	declare public active: boolean;
+
+	// Getter for protected _renderComponent from Yuka's GameEntity
+	public get renderComponent(): Object3D | null {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (this as any)._renderComponent || null;
+	}
 
 	// Rift Physics Properties
 	public velocity: Vector3; // Override Yuka velocity with same type but managed differently if needed
@@ -225,7 +231,7 @@ class Player extends MovingEntity {
 		wantsToSprint: boolean,
 		wantsJump: boolean,
 		wantsCrouch: boolean,
-		arenaObjects: Array<{ mesh: any; box: any }>
+		_arenaObjects: Array<{ mesh: any; box: any }>
 	) {
 
 		this.prevVelocity.copy(this.velocity);
@@ -415,7 +421,7 @@ class Player extends MovingEntity {
 		this.position.copy(newPos);
 	}
 
-	checkSlope(arenaObjects: any[]) {
+	checkSlope(_arenaObjects: any[]) {
 		// Simplified slope check
 		this.slopeAngle = 0;
 		this.groundNormal.set(0, 1, 0);
@@ -532,15 +538,15 @@ class Player extends MovingEntity {
 			const obstacles: any[] = [];
 
 			// Add level geometry
-			if (world.level && world.level._renderComponent) {
-				obstacles.push(world.level._renderComponent);
-				console.log('Added level to obstacles:', world.level._renderComponent.name);
+			if (world.level && world.level.renderComponent) {
+				obstacles.push(world.level.renderComponent);
+				console.log('Added level to obstacles:', world.level.renderComponent.name);
 			}
 
 			// Add all competitors (enemies) render components
 			world.competitors.forEach((competitor: any) => {
-				if (competitor !== this && competitor.active && competitor._renderComponent) {
-					obstacles.push(competitor._renderComponent);
+				if (competitor !== this && competitor.active && competitor.renderComponent) {
+					obstacles.push(competitor.renderComponent);
 					console.log('Added competitor to obstacles:', competitor.name, 'Active:', competitor.active);
 				}
 			});

@@ -38,6 +38,7 @@ class FirstPersonControls extends EventDispatcher {
 	public _keyDownHandler: any;
 	public _keyUpHandler: any;
 	public _wheelHandler: any;
+	public _contextMenuHandler: any;
 
 	/**
 	* Constructs a new first person controls.
@@ -85,6 +86,7 @@ class FirstPersonControls extends EventDispatcher {
 		this._keyDownHandler = onKeyDown.bind(this);
 		this._keyUpHandler = onKeyUp.bind(this);
 		this._wheelHandler = onWheel.bind(this);
+		this._contextMenuHandler = onContextMenu.bind(this);
 
 	}
 
@@ -103,6 +105,7 @@ class FirstPersonControls extends EventDispatcher {
 		document.addEventListener('pointerlockerror', this._pointerlockErrorHandler, false);
 		document.addEventListener('keydown', this._keyDownHandler, false);
 		document.addEventListener('keyup', this._keyUpHandler, false);
+		document.addEventListener('contextmenu', this._contextMenuHandler, false);
 
 		// Request pointer lock - may not be granted immediately if not from user gesture
 		document.body.requestPointerLock().catch(err => {
@@ -128,6 +131,7 @@ class FirstPersonControls extends EventDispatcher {
 		document.removeEventListener('pointerlockerror', this._pointerlockErrorHandler, false);
 		document.removeEventListener('keydown', this._keyDownHandler, false);
 		document.removeEventListener('keyup', this._keyUpHandler, false);
+		document.removeEventListener('contextmenu', this._contextMenuHandler, false);
 
 		if (document.pointerLockElement === document.body) {
 			document.exitPointerLock();
@@ -302,6 +306,21 @@ function onMouseDown(this: FirstPersonControls, event: any) {
 		}
 	}
 
+	// Right mouse button - zoom/ADS (aim down sights)
+	if (this.active && event.which === 3) {
+		event.preventDefault();
+		
+		// Ensure pointer is locked first
+		if (document.pointerLockElement !== document.body) {
+			return;
+		}
+
+		// Trigger zoom on via World's RIFT integration
+		if (this.owner && this.owner.world && this.owner.world.rift) {
+			this.owner.world.rift.weaponSystem.setZoom(true);
+		}
+	}
+
 }
 
 function onMouseUp(this: FirstPersonControls, event: any) {
@@ -309,7 +328,16 @@ function onMouseUp(this: FirstPersonControls, event: any) {
 	if (this.active && event.which === 1) {
 		event.preventDefault();
 		this.input.mouseDown = false;
+	}
 
+	// Right mouse button release - unzoom
+	if (this.active && event.which === 3) {
+		event.preventDefault();
+		
+		// Trigger zoom off via World's RIFT integration
+		if (this.owner && this.owner.world && this.owner.world.rift) {
+			this.owner.world.rift.weaponSystem.setZoom(false);
+		}
 	}
 
 }
@@ -318,8 +346,14 @@ function onMouseMove(this: FirstPersonControls, event: any) {
 
 	if (this.active && document.pointerLockElement === document.body) {
 
-		this.movementX -= event.movementX * 0.001 * this.lookingSpeed;
-		this.movementY -= event.movementY * 0.001 * this.lookingSpeed;
+		// Reduce sensitivity when zoomed for precision aiming
+		let sensitivityMultiplier = 1.0;
+		if (this.owner && this.owner.world && this.owner.world.rift && this.owner.world.rift.weaponSystem.isZoomed) {
+			sensitivityMultiplier = 0.3; // 30% sensitivity when scoped
+		}
+
+		this.movementX -= event.movementX * 0.001 * this.lookingSpeed * sensitivityMultiplier;
+		this.movementY -= event.movementY * 0.001 * this.lookingSpeed * sensitivityMultiplier;
 
 		this.movementY = Math.max(- PI05, Math.min(PI05, this.movementY));
 
@@ -495,6 +529,11 @@ function onWheel(this: FirstPersonControls, event: WheelEvent) {
 
 	}
 
+}
+
+function onContextMenu(this: FirstPersonControls, event: Event) {
+	// Prevent context menu from appearing on right-click (used for zoom/ADS)
+	event.preventDefault();
 }
 
 export { FirstPersonControls };

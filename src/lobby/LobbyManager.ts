@@ -18,8 +18,6 @@ interface Socket {
   off: (event: string, callback?: (...args: unknown[]) => void) => void;
 }
 
-type IoFunction = (url: string, options: unknown) => Socket;
-
 /**
  * Lobby Manager - Handles matchmaking and social features
  */
@@ -47,7 +45,8 @@ export class LobbyManager {
   private eventListeners: Map<LobbyEventType, Set<(data: unknown) => void>> = new Map();
 
   // Socket.IO reference
-  private io: IoFunction | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private io: any = null;
 
   constructor(serverUrl: string = '/') {
     this.serverUrl = serverUrl;
@@ -64,9 +63,9 @@ export class LobbyManager {
     this.userId = this.extractUserId(token);
 
     try {
-      // @ts-ignore - socket.io-client is optional
+      // Dynamic import for socket.io-client
       const socketIo = await import('socket.io-client');
-      this.io = socketIo.io || socketIo.default?.io;
+      this.io = socketIo.io || (socketIo.default as any)?.io;
 
       if (!this.io) {
         throw new Error('socket.io-client not loaded');
@@ -75,7 +74,7 @@ export class LobbyManager {
       this.socket = this.io(this.serverUrl, {
         auth: { token },
         transports: ['websocket'],
-      });
+      }) as Socket;
 
       this.setupListeners();
       return true;

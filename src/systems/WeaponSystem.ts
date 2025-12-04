@@ -13,7 +13,6 @@ interface WeaponState {
 }
 
 export class WeaponSystem {
-  private scene: THREE.Scene;
   private camera: THREE.Camera;
   private audioManager: AudioManager;
   private weaponMesh!: THREE.Object3D;
@@ -28,6 +27,7 @@ export class WeaponSystem {
   // State
   public currentWeapon: WeaponType = WeaponType.AK47;
   private weaponStates: Map<WeaponType, WeaponState> = new Map();
+  public isZoomed: boolean = false;
 
   // Recoil & Spread
   private currentRecoil: { x: number; y: number } = { x: 0, y: 0 };
@@ -41,19 +41,20 @@ export class WeaponSystem {
   private weaponKickRotX: number = 0;
   private sprintBlend: number = 0;
   private reloadBlend: number = 0;
+  private zoomBlend: number = 0; // 0 = hip fire, 1 = fully zoomed
 
   // Weapon model (placeholder position for now)
   // private weaponOffset: THREE.Vector3 = new THREE.Vector3(0.2, -0.2, -0.5);
 
   // Callbacks
   private shellEjectCallback?: (pos: THREE.Vector3, dir: THREE.Vector3) => void;
+  private zoomCallback?: (isZoomed: boolean) => void;
 
   // Third-person mode for AI enemies
   private isThirdPerson: boolean = false;
   private thirdPersonParent: THREE.Object3D | null = null;
 
-  constructor(scene: THREE.Scene, camera: THREE.Camera, _assetManager: AssetManager, audioManager: AudioManager) {
-    this.scene = scene;
+  constructor(_scene: THREE.Scene, camera: THREE.Camera, _assetManager: AssetManager, audioManager: AudioManager) {
     this.camera = camera;
     this.audioManager = audioManager;
 
@@ -69,6 +70,36 @@ export class WeaponSystem {
 
   public setShellEjectCallback(callback: (pos: THREE.Vector3, dir: THREE.Vector3) => void): void {
     this.shellEjectCallback = callback;
+  }
+
+  public setZoomCallback(callback: (isZoomed: boolean) => void): void {
+    this.zoomCallback = callback;
+  }
+
+  /**
+   * Set zoom/ADS state - only works for sniper weapons (AWP, Sniper)
+   * @param zoomed Whether to zoom in or out
+   * @returns True if zoom state changed, false otherwise
+   */
+  public setZoom(zoomed: boolean): boolean {
+    // Only allow zoom for sniper-type weapons
+    if (this.currentWeapon !== WeaponType.Sniper && this.currentWeapon !== WeaponType.AWP) {
+      return false;
+    }
+
+    if (this.isZoomed === zoomed) return false;
+
+    this.isZoomed = zoomed;
+    
+    // Don't instantly hide - let the animation blend handle visibility
+    // The weapon will smoothly lower and fade out during zoom transition
+
+    // Notify callback (for HUD scope overlay and FOV)
+    if (this.zoomCallback) {
+      this.zoomCallback(zoomed);
+    }
+
+    return true;
   }
 
   /**
@@ -166,6 +197,11 @@ export class WeaponSystem {
   }
 
   public switchWeapon(weapon: WeaponType | number): void {
+    // Unzoom when switching weapons
+    if (this.isZoomed) {
+      this.setZoom(false);
+    }
+
     if (typeof weapon === 'number') {
       const weapons = this.getEquippedWeapons();
       if (weapon >= 0 && weapon < weapons.length) {
@@ -399,6 +435,11 @@ export class WeaponSystem {
       return;
     }
 
+    // Unzoom if reloading while zoomed
+    if (this.isZoomed) {
+      this.setZoom(false);
+    }
+
     state.isReloading = true;
     state.reloadStartTime = performance.now();
 
@@ -452,6 +493,10 @@ export class WeaponSystem {
     const targetReload = state.isReloading ? 1 : 0;
     this.reloadBlend += (targetReload - this.reloadBlend) * 8 * deltaTime;
 
+    // Zoom blend (smooth transition for scope animation)
+    const targetZoom = this.isZoomed ? 1 : 0;
+    this.zoomBlend += (targetZoom - this.zoomBlend) * 10 * deltaTime; // Slightly faster for snappy feel
+
     // Update muzzle flash
     if (this.muzzleFlashTimer > 0) {
       this.muzzleFlashTimer -= deltaTime;
@@ -488,13 +533,23 @@ export class WeaponSystem {
       return;
     }
 
+    // Hide weapon smoothly when fully zoomed
+    // Start hiding at 70% zoom progress for smooth transition
+    const hideThreshold = 0.7;
+    if (this.zoomBlend > hideThreshold) {
+      const hideProgress = (this.zoomBlend - hideThreshold) / (1 - hideThreshold);
+      this.weaponMesh.visible = hideProgress < 0.99;
+    } else {
+      this.weaponMesh.visible = true;
+    }
+
     // Base position
     let targetX = 0.25 - this.weaponSwayX;
     let targetY = -0.25 - this.weaponSwayY;
     let targetZ = -0.4;
 
-    // Weapon bob (breathing/walking motion)
-    const bobInfluence = 1.0;
+    // Weapon bob (breathing/walking motion) - reduce during zoom
+    const bobInfluence = 1.0 - this.zoomBlend * 0.8; // Less bob when zooming
     const bobX = Math.cos(headBobTime * 0.5) * 0.015 * bobInfluence;
     const bobY = Math.sin(headBobTime) * 0.035 * bobInfluence;
     targetX += bobX;
@@ -510,9 +565,18 @@ export class WeaponSystem {
     // Reload offset (dip down)
     targetY -= 0.15 * this.reloadBlend;
 
+    // Zoom animation: weapon raises up to bring scope to eye level
+    // Also moves forward and centers for proper ADS position
+    targetY += 0.15 * this.zoomBlend;  // Raise the weapon up
+    targetZ -= 0.2 * this.zoomBlend;   // Pull forward toward eye
+    targetX -= 0.15 * this.zoomBlend;  // Center the weapon
+
     // Rotation
     let targetRotX = -this.weaponKickRotX + (0.3 * this.reloadBlend);
     let targetRotZ = (0.2 * this.sprintBlend);
+    
+    // Zoom rotation: tilt weapon slightly to align scope
+    targetRotX += 0.1 * this.zoomBlend;
 
     // Smooth lerp to target
     const lerpSpeed = 15;

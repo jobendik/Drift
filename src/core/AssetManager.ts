@@ -111,7 +111,7 @@ class AssetManager {
 
 		// player
 
-		animationLoader.load('./animations/player.json', (clips) => {
+		animationLoader.load('./assets/animations/player.json', (clips) => {
 
 			for (const clip of clips) {
 
@@ -123,7 +123,7 @@ class AssetManager {
 
 		// blaster
 
-		animationLoader.load('./animations/blaster.json', (clips) => {
+		animationLoader.load('./assets/animations/blaster.json', (clips) => {
 
 			for (const clip of clips) {
 
@@ -135,7 +135,7 @@ class AssetManager {
 
 		// shotgun
 
-		animationLoader.load('./animations/shotgun.json', (clips) => {
+		animationLoader.load('./assets/animations/shotgun.json', (clips) => {
 
 			for (const clip of clips) {
 
@@ -147,7 +147,7 @@ class AssetManager {
 
 		// assault rifle
 
-		animationLoader.load('./animations/assaultRifle.json', (clips) => {
+		animationLoader.load('./assets/animations/assaultRifle.json', (clips) => {
 
 			for (const clip of clips) {
 
@@ -227,22 +227,22 @@ class AssetManager {
 		const ammo = new PositionalAudio(listener);
 		ammo.matrixAutoUpdate = false;
 
-		audioLoader.load('./audios/blaster_shot.ogg', buffer => blasterShot.setBuffer(buffer));
-		audioLoader.load('./audios/shotgun_shot.ogg', buffer => shotgunShot.setBuffer(buffer));
-		audioLoader.load('./audios/assault_rifle_shot.ogg', buffer => assaultRifleShot.setBuffer(buffer));
-		audioLoader.load('./audios/reload.ogg', buffer => reload.setBuffer(buffer));
-		audioLoader.load('./audios/shotgun_shot_reload.ogg', buffer => shotgunShotReload.setBuffer(buffer));
-		audioLoader.load('./audios/step1.ogg', buffer => step1.setBuffer(buffer));
-		audioLoader.load('./audios/step2.ogg', buffer => step2.setBuffer(buffer));
-		audioLoader.load('./audios/impact1.ogg', buffer => impact1.setBuffer(buffer));
-		audioLoader.load('./audios/impact2.ogg', buffer => impact2.setBuffer(buffer));
-		audioLoader.load('./audios/impact3.ogg', buffer => impact3.setBuffer(buffer));
-		audioLoader.load('./audios/impact4.ogg', buffer => impact4.setBuffer(buffer));
-		audioLoader.load('./audios/impact5.ogg', buffer => impact5.setBuffer(buffer));
-		audioLoader.load('./audios/impact6.ogg', buffer => impact6.setBuffer(buffer));
-		audioLoader.load('./audios/impact7.ogg', buffer => impact7.setBuffer(buffer));
-		audioLoader.load('./audios/health.ogg', buffer => health.setBuffer(buffer));
-		audioLoader.load('./audios/ammo.ogg', buffer => ammo.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/weapons/blaster_shot.ogg', buffer => blasterShot.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/weapons/shotgun_shot.ogg', buffer => shotgunShot.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/weapons/assault_rifle_shot.ogg', buffer => assaultRifleShot.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/weapons/reload.ogg', buffer => reload.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/weapons/shotgun_shot_reload.ogg', buffer => shotgunShotReload.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/player/step1.ogg', buffer => step1.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/player/step2.ogg', buffer => step2.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact1.ogg', buffer => impact1.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact2.ogg', buffer => impact2.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact3.ogg', buffer => impact3.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact4.ogg', buffer => impact4.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact5.ogg', buffer => impact5.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact6.ogg', buffer => impact6.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/impacts/impact7.ogg', buffer => impact7.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/ui/health.ogg', buffer => health.setBuffer(buffer));
+		audioLoader.load('./assets/audio/sfx/ui/ammo.ogg', buffer => ammo.setBuffer(buffer));
 
 		audios.set('blaster_shot', blasterShot);
 		audios.set('shotgun_shot', shotgunShot);
@@ -279,7 +279,7 @@ class AssetManager {
 
 		loadingManager.itemStart('levelConfig');
 
-		fetch('./config/level.json')
+		fetch('./assets/data/config/level.json')
 			.then(response => {
 
 				return response.json();
@@ -311,7 +311,7 @@ class AssetManager {
 
 		// shadow for soldiers
 
-		const shadowTexture = textureLoader.load('./textures/shadow.png');
+		const shadowTexture = textureLoader.load('./assets/textures/environment/shadow.png');
 		const planeGeometry = new PlaneGeometry();
 		const planeMaterial = new MeshBasicMaterial({ map: shadowTexture, transparent: true, opacity: 0.4 });
 
@@ -324,7 +324,7 @@ class AssetManager {
 
 		// soldier
 
-		gltfLoader.load('./models/soldier.glb', (gltf) => {
+		gltfLoader.load('./assets/models/characters/soldier.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.animations = gltf.animations;
@@ -358,7 +358,7 @@ class AssetManager {
 
 		// level
 
-		gltfLoader.load('./models/level.glb', (gltf) => {
+		gltfLoader.load('./assets/models/environment/level.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -468,7 +468,7 @@ class AssetManager {
 
 	// blaster, high poly
 
-	gltfLoader.load('./models/blaster_high.glb', (gltf) => {
+	gltfLoader.load('./assets/models/weapons/blaster_high.glb', (gltf) => {
 
 		const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -487,7 +487,7 @@ class AssetManager {
 
 		// blaster, low poly
 
-		gltfLoader.load('./models/blaster_low.glb', (gltf) => {
+		gltfLoader.load('./assets/models/weapons/blaster_low.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -506,7 +506,7 @@ class AssetManager {
 
 		// shotgun, high poly
 
-		gltfLoader.load('./models/shotgun_high.glb', (gltf) => {
+		gltfLoader.load('./assets/models/weapons/shotgun_high.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -525,7 +525,7 @@ class AssetManager {
 
 		// shotgun, low poly
 
-		gltfLoader.load('./models/shotgun_low.glb', (gltf) => {
+		gltfLoader.load('./assets/models/weapons/shotgun_low.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -544,7 +544,7 @@ class AssetManager {
 
 		// assault rifle, high poly
 
-		gltfLoader.load('./models/assaultRifle_high.glb', (gltf) => {
+		gltfLoader.load('./assets/models/weapons/assaultRifle_high.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -563,7 +563,7 @@ class AssetManager {
 
 		// assault rifle, low poly
 
-		gltfLoader.load('./models/assaultRifle_low.glb', (gltf) => {
+		gltfLoader.load('./assets/models/weapons/assaultRifle_low.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -582,7 +582,7 @@ class AssetManager {
 
 		// health pack
 
-		gltfLoader.load('./models/healthPack.glb', (gltf) => {
+		gltfLoader.load('./assets/models/props/healthPack.glb', (gltf) => {
 
 			const renderComponent = gltf.scene;
 			renderComponent.matrixAutoUpdate = false;
@@ -601,7 +601,7 @@ class AssetManager {
 
 		// muzzle sprite
 
-		const muzzleTexture = textureLoader.load('./textures/muzzle.png');
+		const muzzleTexture = textureLoader.load('./assets/textures/effects/muzzle.png');
 		muzzleTexture.matrixAutoUpdate = false;
 
 		const muzzleMaterial = new SpriteMaterial({ map: muzzleTexture });
@@ -634,23 +634,23 @@ class AssetManager {
 
 		const textureLoader = this.textureLoader;
 
-		let texture = textureLoader.load('./textures/crosshairs.png');
+		let texture = textureLoader.load('./assets/textures/ui/crosshairs.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('crosshairs', texture);
 
-		texture = textureLoader.load('./textures/damageIndicatorFront.png');
+		texture = textureLoader.load('./assets/textures/ui/damageIndicatorFront.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('damageIndicatorFront', texture);
 
-		texture = textureLoader.load('./textures/damageIndicatorRight.png');
+		texture = textureLoader.load('./assets/textures/ui/damageIndicatorRight.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('damageIndicatorRight', texture);
 
-		texture = textureLoader.load('./textures/damageIndicatorLeft.png');
+		texture = textureLoader.load('./assets/textures/ui/damageIndicatorLeft.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('damageIndicatorLeft', texture);
 
-		texture = textureLoader.load('./textures/damageIndicatorBack.png');
+		texture = textureLoader.load('./assets/textures/ui/damageIndicatorBack.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('damageIndicatorBack', texture);
 
@@ -670,7 +670,7 @@ class AssetManager {
 
 		loadingManager.itemStart('navmesh');
 
-		navMeshLoader.load('./navmeshes/navmesh.glb').then((navMesh) => {
+		navMeshLoader.load('./assets/data/navmeshes/navmesh.glb').then((navMesh) => {
 
 			this.navMesh = navMesh;
 
@@ -682,7 +682,7 @@ class AssetManager {
 
 		loadingManager.itemStart('costTable');
 
-		fetch('./navmeshes/costTable.json')
+		fetch('./assets/data/navmeshes/costTable.json')
 			.then(response => {
 
 				return response.json();

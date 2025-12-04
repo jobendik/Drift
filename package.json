@@ -1,18 +1,20 @@
 {
-  "name": "dive",
-  "version": "0.0.1",
+  "name": "drift-rift",
+  "version": "0.1.0",
   "type": "module",
-  "description": "Shooter AI showcase with Yuka",
-  "repository": "Mugen87/dive",
+  "description": "Drift FPS Game with RIFT Integration - Three.js & Yuka AI",
+  "repository": "jobendik/Drift",
   "scripts": {
-    "build": "vite build",
     "dev": "vite",
+    "build": "vite build",
+    "build:check": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "start": "npm run dev",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "start": "npm run dev"
+    "type-check": "tsc --noEmit"
   },
-  "author": "Mugen87",
+  "author": "jobendik",
   "license": "MIT",
   "devDependencies": {
     "@types/dat.gui": "^0.7.13",

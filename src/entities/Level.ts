@@ -1,4 +1,5 @@
 import { GameEntity, BVH } from 'yuka';
+import { Object3D } from 'three';
 
 /**
 * Class for representing the level of this game.
@@ -7,6 +8,12 @@ import { GameEntity, BVH } from 'yuka';
 class Level extends GameEntity {
 
 	public bvh: any;
+
+	// Getter for protected _renderComponent from Yuka's GameEntity
+	public get renderComponent(): Object3D | null {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (this as any)._renderComponent || null;
+	}
 
 	/**
 	* Constructs a new level entity with the given values.

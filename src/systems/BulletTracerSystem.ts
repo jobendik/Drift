@@ -27,7 +27,7 @@ export class BulletTracerSystem {
     
     // Load tracer textures
     textureLoader.load(
-      'assets/images/Bullet-Trace.png_1b6132fc.png',
+      'assets/images/ui/Bullet-Trace.png_1b6132fc.png',
       (texture) => {
         this.tracerTexture = texture;
         this.tracerTexture.wrapS = THREE.RepeatWrapping;
@@ -38,7 +38,7 @@ export class BulletTracerSystem {
     );
 
     textureLoader.load(
-      'assets/images/Bullet-Fire-Trace.jpg_d795b3f8.jpg',
+      'assets/images/ui/Bullet-Fire-Trace.jpg_d795b3f8.jpg',
       (texture) => {
         this.fireTracerTexture = texture;
         this.fireTracerTexture.wrapS = THREE.RepeatWrapping;

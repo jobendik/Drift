@@ -83,7 +83,7 @@ class Item extends GameEntity {
 	* @param {GameEntity} entity - The entity that receives this item.
 	* @return {Item} A reference to this item.
 	*/
-	addItemToEntity(entity: any): void { }
+	addItemToEntity(_entity: any): void { }
 
 }
 

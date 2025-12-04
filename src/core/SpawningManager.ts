@@ -1,7 +1,7 @@
 import { SphericalTriggerRegion, Vector3 } from 'yuka';
 import { HealthPack } from '../entities/HealthPack.js';
 import { ItemGiver } from '../triggers/ItemGiver.js';
-import { SceneUtils } from '../etc/SceneUtils.js';
+import { SceneUtils } from '../utils/SceneUtils.js';
 import { HEALTH_PACK, WEAPON_TYPES_ASSAULT_RIFLE, WEAPON_TYPES_BLASTER, WEAPON_TYPES_SHOTGUN } from './Constants.js';
 import { WeaponItem } from '../entities/WeaponItem.js';
 import { CONFIG } from './Config.js';

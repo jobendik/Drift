@@ -41,9 +41,9 @@ export class ImpactSystem {
     // Body impact sounds (randomized for variety)
     // Body impact sounds (randomized for variety)
     const bodyImpactPaths = [
-      'assets/audio/impact/Body-Impact-1.mp3',
-      'assets/audio/impact/Body-Impact-2.mp3',
-      'assets/audio/impact/Body-Impact-3.mp3',
+      'assets/audio/sfx/impacts/Body-Impact-1.mp3',
+      'assets/audio/sfx/impacts/Body-Impact-2.mp3',
+      'assets/audio/sfx/impacts/Body-Impact-3.mp3',
     ];
 
     bodyImpactPaths.forEach((path) => {
@@ -53,52 +53,52 @@ export class ImpactSystem {
     });
 
     // Death impact
-    audioLoader.load('assets/audio/impact/Death-Impact.mp3', (buffer) => {
+    audioLoader.load('assets/audio/sfx/impacts/Death-Impact.mp3', (buffer) => {
       this.audioBuffers.deathImpact = buffer;
     }, undefined, (err) => console.warn('Failed to load death impact:', err));
 
     // Hit confirmation
-    audioLoader.load('assets/audio/impact/Hit-Impact.mp3', (buffer) => {
+    audioLoader.load('assets/audio/sfx/impacts/Hit-Impact.mp3', (buffer) => {
       this.audioBuffers.hitImpact = buffer;
     }, undefined, (err) => console.warn('Failed to load hit impact:', err));
 
     // Explosion (Placeholder using Shotgun Fire pitched down)
-    audioLoader.load('assets/audio/weapons/Shotgun-Fire.mp3', (buffer) => {
+    audioLoader.load('assets/audio/sfx/weapons/Shotgun-Fire.mp3', (buffer) => {
       this.audioBuffers.explosion = buffer;
     }, undefined, (err) => console.warn('Failed to load explosion sound:', err));
 
     // Bullet Whiz (using a tail sound as placeholder)
-    audioLoader.load('assets/audio/weapons/Tec-9-Tail.mp3', (buffer) => {
+    audioLoader.load('assets/audio/sfx/weapons/Tec-9-Tail.mp3', (buffer) => {
       this.audioBuffers.bulletWhiz = buffer;
     }, undefined, (err) => console.warn('Failed to load bullet whiz:', err));
 
     // Shell Drop (using light metal impact)
-    audioLoader.load('assets/audio/impact/Impact-Iron-Light.mp3', (buffer) => {
+    audioLoader.load('assets/audio/sfx/impacts/Impact-Iron-Light.mp3', (buffer) => {
       this.audioBuffers.shellDrop = buffer;
     }, undefined, (err) => console.warn('Failed to load shell drop:', err));
 
     // Surface impacts - organized by material
     const surfaceImpacts = {
       [SurfaceMaterial.BRICK]: [
-        'assets/audio/impact/Impact-Brick-1.mp3',
-        'assets/audio/impact/Impact-Brick-2.mp3',
+        'assets/audio/sfx/impacts/Impact-Brick-1.mp3',
+        'assets/audio/sfx/impacts/Impact-Brick-2.mp3',
       ],
       [SurfaceMaterial.GRAVEL]: [
-        'assets/audio/impact/Impact-Gravel-1.mp3',
-        'assets/audio/impact/Impact-Gravel-2.mp3',
+        'assets/audio/sfx/impacts/Impact-Gravel-1.mp3',
+        'assets/audio/sfx/impacts/Impact-Gravel-2.mp3',
       ],
       [SurfaceMaterial.WOOD]: [
-        'assets/audio/impact/Impact-Wood-1.mp3',
-        'assets/audio/impact/Impact-Wood-2.mp3',
+        'assets/audio/sfx/impacts/Impact-Wood-1.mp3',
+        'assets/audio/sfx/impacts/Impact-Wood-2.mp3',
       ],
       [SurfaceMaterial.ROCK]: [
-        'assets/audio/impact/Impact-Rock-1.mp3',
-        'assets/audio/impact/Impact-Rock-2.mp3',
+        'assets/audio/sfx/impacts/Impact-Rock-1.mp3',
+        'assets/audio/sfx/impacts/Impact-Rock-2.mp3',
       ],
       [SurfaceMaterial.METAL]: [
-        'assets/audio/impact/Impact-Metal.mp3',
-        'assets/audio/impact/Impact-Iron.mp3',
-        'assets/audio/impact/Impact-Iron-Light.mp3',
+        'assets/audio/sfx/impacts/Impact-Metal.mp3',
+        'assets/audio/sfx/impacts/Impact-Iron.mp3',
+        'assets/audio/sfx/impacts/Impact-Iron-Light.mp3',
       ],
     };
 
