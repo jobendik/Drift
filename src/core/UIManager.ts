@@ -220,6 +220,9 @@ class UIManager {
 		}
 
 		// ensure to completely remove the loading screen from the DOM when it is not visible anymore
+		
+		// Show loading screen with active class
+		this.html.loadingScreen.classList.add('active');
 
 		this.html.loadingScreen.addEventListener('transitionend', (event: any) => {
 

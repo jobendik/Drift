@@ -30,87 +30,181 @@
 		</div>
 	</section>
 
-	<section id="hudAmmo" class="uiContainer hidden">
-		<div>
-			<span id="roundsLeft"></span>
-			<span>|</span>
-			<span id="ammo"></span>
-		</div>
-	</section>
-
-	<section id="hudHealth" class="uiContainer hidden">
-		<div>
-			<span id="health"></span>
-		</div>
-	</section>
-
-	<section id="hudFragList" class="uiContainer hidden">
-		<div>
-			<ul id="fragList"></ul>
-		</div>
-	</section>
-
-	<!-- RIFT HUD Elements -->
-	<div id="rift-hud">
-		<!-- Health Bar -->
-		<div id="health-container">
-			<div id="health-icon">❤</div>
-			<div id="health-bar-wrapper">
-				<div id="health-bar"></div>
+	<!-- Main HUD Container -->
+	<div id="hud">
+		<!-- Status Bars (Bottom Left) -->
+		<div id="status-bars">
+			<!-- Health Bar -->
+			<div id="health-wrapper">
+				<div class="icon">❤</div>
+				<div class="bar-bg">
+					<div id="health-bar-mask"></div>
+				</div>
+				<span id="health-text-value">100</span>
 			</div>
-			<span id="health-text">100</span>
-		</div>
-		
-		<!-- Armor Bar -->
-		<div id="armor-container">
-			<div id="armor-icon">🛡</div>
-			<div id="armor-bar-wrapper">
-				<div id="armor-bar"></div>
+
+			<!-- Armor Bar -->
+			<div id="armor-wrapper">
+				<div class="icon">🛡</div>
+				<div class="bar-bg">
+					<div id="armor-bar-mask"></div>
+				</div>
+				<span id="armor-text-value">0</span>
 			</div>
-			<span id="armor-text">0</span>
+
+			<!-- Stamina Bar -->
+			<div id="stamina-wrapper">
+				<div class="icon">⚡</div>
+				<div class="bar-bg">
+					<div id="stamina-bar-mask"></div>
+				</div>
+				<span id="stamina-text-value">100</span>
+			</div>
 		</div>
-		
-		<!-- Ammo Display -->
-		<div id="ammo-container">
-			<span id="ammo-current">30</span>
-			<span id="ammo-separator">/</span>
-			<span id="ammo-reserve">120</span>
+
+		<!-- Weapon Info (Bottom Right) -->
+		<div id="weapon-info">
+			<div id="weapon-name">AK-47</div>
+			<div id="ammo-display">30 / 120</div>
+			<div id="reload-indicator">RELOADING...</div>
 		</div>
-		<div id="weapon-name">M4</div>
-		
-		<!-- Crosshair -->
+
+		<!-- Crosshair (Center) -->
 		<div id="crosshair">
-			<div id="crosshair-top"></div>
-			<div id="crosshair-bottom"></div>
-			<div id="crosshair-left"></div>
-			<div id="crosshair-right"></div>
-			<div id="crosshair-center"></div>
+			<div id="cross-top"></div>
+			<div id="cross-bottom"></div>
+			<div id="cross-left"></div>
+			<div id="cross-right"></div>
 		</div>
-		
-		<!-- Hitmarker -->
-		<div id="hitmarker"></div>
-		
-		<!-- Kill Icon -->
-		<div id="kill-icon">☠</div>
-		
-		<!-- Damage Vignette -->
-		<div id="damage-vignette"></div>
-		
-		<!-- Damage Direction Indicators -->
-		<div id="damage-indicator-top" class="damage-indicator"></div>
-		<div id="damage-indicator-bottom" class="damage-indicator"></div>
-		<div id="damage-indicator-left" class="damage-indicator"></div>
-		<div id="damage-indicator-right" class="damage-indicator"></div>
-		
-		<!-- Killfeed -->
+
+		<!-- Sniper Scope Overlay -->
+		<div id="sniper-scope"></div>
+
+		<!-- Hitmarker (Center) -->
+		<div id="hitmarker">
+			<img src="/assets/images/ui/Hitmarker.png_b137b09c.png" alt="Hit">
+		</div>
+
+		<!-- Kill & Headshot Icons (Center) -->
+		<div id="kill-icon">
+			<img src="/assets/images/ui/Kill-Icon.png_91675cde.png" alt="Kill">
+		</div>
+		<div id="headshot-icon">
+			<img src="/assets/images/ui/Headshot-Icon.png_ca1ab804.png" alt="Headshot">
+		</div>
+
+		<!-- Killfeed (Top Right) -->
 		<div id="killfeed"></div>
-		
-		<!-- Reload Indicator -->
-		<div id="reload-indicator">RELOADING...</div>
-		
-		<!-- Wave/Score Display (for wave survival) -->
+
+		<!-- Old UIManager Frag List (for compatibility) -->
+		<div id="hudFragList" class="hidden">
+			<div id="fragList"></div>
+		</div>
+
+		<!-- Old UIManager HUD Elements (for compatibility) -->
+		<div id="hudAmmo" style="display: none;"></div>
+		<div id="hudHealth" style="display: none;"></div>
+		<div id="roundsLeft" style="display: none;"></div>
+		<div id="ammo" style="display: none;"></div>
+		<div id="health" style="display: none;"></div>
+
+		<!-- Wave/Score Display (Top Center) -->
 		<div id="wave-display"></div>
 		<div id="score-display">0</div>
+		<div id="enemies-remaining">Enemies: 0</div>
+
+		<!-- Multi-Kill & Streak Messages (Right Side) -->
+		<div id="multikill-display"></div>
+		<div id="streak-display"></div>
+
+		<!-- Powerup Indicator (Top Left) -->
+		<div id="powerup-indicator"></div>
+
+		<!-- Message Display (Center) -->
+		<div id="message-display"></div>
+
+		<!-- Vignette Effects -->
+		<div id="vignette-impact-flash"></div>
+		<div id="vignette-damage-pulse"></div>
+		<div id="vignette-critical"></div>
+
+		<!-- Damage Direction Overlay -->
+		<div id="damage-overlay">
+			<img src="/assets/images/ui/Damage-Indictator.png_78ece5da.png" alt="Damage">
+		</div>
+	</div>
+
+	<!-- Pause Menu -->
+	<div id="pause-menu" style="display: none;">
+		<div class="menu-content">
+			<h1>PAUSED</h1>
+			<button id="resume-btn" class="menu-button">Resume</button>
+			<button id="settings-btn" class="menu-button">Settings</button>
+			<button id="quit-btn" class="menu-button">Quit to Menu</button>
+		</div>
+	</div>
+
+	<!-- Settings Menu -->
+	<div id="settings-menu" style="display: none;">
+		<div class="menu-content">
+			<h1>SETTINGS</h1>
+			<div class="setting-row">
+				<label>Sensitivity:</label>
+				<input type="range" id="sensitivity-slider" min="0.0001" max="0.01" step="0.0001" value="0.002">
+				<span id="sensitivity-value">0.002</span>
+			</div>
+			<div class="setting-row">
+				<label>Volume:</label>
+				<input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
+				<span id="volume-value">50%</span>
+			</div>
+			<div class="setting-row">
+				<label>FOV:</label>
+				<input type="range" id="fov-slider" min="60" max="120" step="1" value="90">
+				<span id="fov-value">90</span>
+			</div>
+			<button id="settings-back-btn" class="menu-button">Back</button>
+		</div>
+	</div>
+
+	<!-- Game Over Screen -->
+	<div id="game-over" style="display: none;">
+		<div class="game-over-content">
+			<h1>GAME OVER</h1>
+			<div class="stats">
+				<div class="stat-row"><span>Score:</span><span id="final-score">0</span></div>
+				<div class="stat-row"><span>Waves:</span><span id="final-waves">0</span></div>
+				<div class="stat-row"><span>Kills:</span><span id="final-kills">0</span></div>
+				<div class="stat-row"><span>Accuracy:</span><span id="final-accuracy">0%</span></div>
+				<div class="stat-row"><span>Time:</span><span id="final-time">0:00</span></div>
+			</div>
+			<button id="restart-btn" class="menu-button">Restart</button>
+		</div>
+	</div>
+
+	<!-- Scoreboard (Multiplayer) -->
+	<div id="scoreboard" style="display: none;">
+		<div class="scoreboard-content">
+			<h2>SCOREBOARD</h2>
+			<table>
+				<thead>
+					<tr>
+						<th>Player</th>
+						<th>Kills</th>
+						<th>Deaths</th>
+						<th>Ping</th>
+					</tr>
+				</thead>
+				<tbody id="scoreboard-body"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<!-- Start Screen Message Display -->
+	<div id="start-screen" style="display: none;">
+		<div class="start-content">
+			<h1>PRESS ANY KEY TO START</h1>
+		</div>
 	</div>
 
 	<!-- Lobby Container (for multiplayer) -->

@@ -15,59 +15,7 @@ body {
 	line-height: 1.5;
 	color: #212529;
 }
-#hudAmmo {
-	position: absolute;
-	bottom: 4%;
-	right: 4%;
-}
-#hudHealth {
-	position: absolute;
-	bottom: 4%;
-	left: 4%;
-}
-#roundsLeft {
-	font-weight: bold;
-	width: 32px;
-}
-#ammo {
-	font-size: 20px;
-	opacity: 0.5;
-	width: 32px;
-}
-#health {
-	width: 64px;
-}
-#fragList{
-	margin: 0;
-	padding: 0;
-	list-style-type: none;
-	font-size: 16px;
-	text-align: left;
-}
-#hudFragList{
-	position: absolute;
-	top: 4%;
-	left: 4%;
-}
-.uiContainer {
-	background-color: #282828;
-	font-size: 28px;
-	color: #ffffff;
-	text-align: center;
-	line-height: 20px;
-}
-.uiContainer>div {
-	padding: 16px;
-}
-.uiContainer>div>span {
-	display: inline-block;
-}
-.uiContainer>div>ul>li {
-	padding: 4px;
-}
-.uiContainer>div>ul>li:not(:first-child) {
-	border-top: 1px solid #cccccc;
-}
+/* Legacy HUD elements - keeping for backward compatibility */
 .hidden {
 	display: none;
 }
@@ -75,15 +23,40 @@ body {
 	position: fixed;
 	height: 100%;
 	width: 100%;
-	display: flex;
+	display: none;
 	align-items: center;
 	justify-content: center;
-	z-index: 2;
+	z-index: 3500;
 	opacity: 1;
 	transition: 0.5s opacity;
+	background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+	flex-direction: column;
+}
+#loadingScreen.active {
+	display: flex;
 }
 #loadingScreen.fade-out {
 	opacity: 0;
+	pointer-events: none;
+}
+.loading-content {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 40px;
+}
+.loading-logo {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 72px;
+	font-weight: 900;
+	color: #4dabf7;
+	text-shadow: 0 0 30px rgba(77, 171, 247, 0.8);
+	letter-spacing: 12px;
+	animation: glow-pulse 2s ease-in-out infinite;
+}
+@keyframes glow-pulse {
+	0%, 100% { text-shadow: 0 0 20px rgba(77, 171, 247, 0.5); }
+	50% { text-shadow: 0 0 40px rgba(77, 171, 247, 1); }
 }
 .spinner {
 	margin: 100px auto;
@@ -132,44 +105,75 @@ body {
 #startScreen {
 	align-items: center;
 	justify-content: center;
-	z-index: 3;
+	z-index: 3000;
 	position: fixed;
 	height: 100%;
 	width: 100%;
 	display: flex;
 	flex-direction: column;
-	background-color: #ffffff;
-	font-size: 12;
+	background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 50%, #16213e 100%);
+	font-size: 12px;
 	text-align: center;
+	top: 0;
+	left: 0;
+	pointer-events: auto;
 }
 
-button {
-	background-color: #ee0808;
-	border-color: #ee0808;
+.logo {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 96px;
+	font-weight: 900;
+	color: #4dabf7;
+	text-shadow: 0 0 40px rgba(77, 171, 247, 0.8);
+	letter-spacing: 20px;
+	margin-bottom: 60px;
+	animation: logo-pulse 3s ease-in-out infinite;
+}
+
+@keyframes logo-pulse {
+	0%, 100% { 
+		transform: scale(1);
+		text-shadow: 0 0 30px rgba(77, 171, 247, 0.6); 
+	}
+	50% { 
+		transform: scale(1.05);
+		text-shadow: 0 0 60px rgba(77, 171, 247, 1); 
+	}
+}
+
+button, .breach-button {
+	background: linear-gradient(135deg, rgba(77, 171, 247, 0.3), rgba(77, 171, 247, 0.1));
+	border: 2px solid rgba(77, 171, 247, 0.6);
 	color: #ffffff;
 	cursor: pointer;
-	box-shadow: 2px 2px 2px rgba(0,0,0,0.1);
+	box-shadow: 0 0 20px rgba(77, 171, 247, 0.3);
 	display: inline-block;
-    font-weight: 400;
+    font-weight: 700;
     text-align: center;
     white-space: nowrap;
     vertical-align: middle;
-    user-select: none;
-    border: 1px solid transparent;
-    padding: .375rem .75rem;
-    font-size: 1rem;
+    user-select: auto;
+    padding: 20px 60px;
+    font-size: 24px;
     line-height: 1.5;
-    border-radius: .25rem;
-	transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
-	font-family: 'Jura', sans-serif;
+    border-radius: 8px;
+	transition: all 0.3s ease;
+	font-family: 'Orbitron', sans-serif;
+	text-transform: uppercase;
+	letter-spacing: 4px;
+	pointer-events: auto;
+	position: relative;
+	z-index: 3100;
 }
 
-button:hover {
-	background-color: #c90707;
-	border-color: #bd0606;
+button:hover, .breach-button:hover {
+	background: linear-gradient(135deg, rgba(77, 171, 247, 0.5), rgba(77, 171, 247, 0.2));
+	border-color: #4dabf7;
+	box-shadow: 0 0 40px rgba(77, 171, 247, 0.6);
+	transform: scale(1.05);
 	text-decoration: none;
 }
 
-button:focus {
+button:focus, .breach-button:focus {
 	outline:0;
 }

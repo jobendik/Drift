@@ -233,6 +233,7 @@ class World {
 		const entities = this.entityManager.entities;
 		let minDistance = Infinity;
 		let hittedEntity = null;
+		let hitNormal = null;
 
 		const owner = projectile.owner;
 		const ray = projectile.ray;
@@ -255,6 +256,12 @@ class World {
 						hittedEntity = entity;
 
 						intersectionPoint.copy(currentIntersectionPoint);
+						
+						// For level hits, calculate normal for decals
+						if (entity === this.level) {
+							// Approximate normal from ray direction (will be improved with proper BVH normal extraction)
+							hitNormal = new Vector3().copy(ray.direction).negate().normalize();
+						}
 
 					}
 
@@ -263,6 +270,11 @@ class World {
 
 			}
 
+		}
+
+		// Store hit normal for decal creation
+		if (hitNormal && hittedEntity === this.level) {
+			(projectile as any)._lastHitNormal = hitNormal;
 		}
 
 		return hittedEntity;

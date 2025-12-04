@@ -26,18 +26,20 @@ export class DecalSystem {
     const textureLoader = new THREE.TextureLoader();
 
     textureLoader.load(
-      'assets/images/Bullet-Hole.png_6e4be8ce.png',
+      'assets/images/ui/Bullet-Hole.png_6e4be8ce.png',
       (texture) => {
         this.bulletHoleTexture = texture;
+        console.log('✓ Bullet hole texture loaded successfully');
       },
       undefined,
       (err) => console.warn('Failed to load bullet hole texture:', err)
     );
 
     textureLoader.load(
-      'assets/images/Crack-Hole.png_ee41c0b1.png',
+      'assets/images/ui/Crack-Hole.png_ee41c0b1.png',
       (texture) => {
         this.crackHoleTexture = texture;
+        console.log('✓ Crack hole texture loaded successfully');
       },
       undefined,
       (err) => console.warn('Failed to load crack hole texture:', err)
@@ -53,7 +55,10 @@ export class DecalSystem {
     normal: THREE.Vector3,
     material: SurfaceMaterial
   ): void {
-    if (!this.bulletHoleTexture) return;
+    if (!this.bulletHoleTexture) {
+      console.warn('⚠️ Cannot create bullet hole - texture not loaded yet');
+      return;
+    }
 
     // Use crack texture for brick/rock surfaces for variety
     const useCrack = 
@@ -63,6 +68,8 @@ export class DecalSystem {
 
     const texture = useCrack ? this.crackHoleTexture : this.bulletHoleTexture;
     const size = 0.15 + Math.random() * 0.1; // Slight size variation
+    
+    console.log(`✓ Creating bullet hole at (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}), size: ${size.toFixed(2)}`)
 
     // Create decal mesh
     const geometry = new THREE.PlaneGeometry(size, size);

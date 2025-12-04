@@ -1,5 +1,7 @@
 import { MovingEntity, Ray, Vector3, GameEntity } from 'yuka';
 import { MESSAGE_HIT } from '../core/Constants';
+import * as THREE from 'three';
+import { SurfaceMaterial } from '../systems/DecalSystem';
 
 const intersectionPoint = new Vector3();
 const ray = new Ray();
@@ -72,6 +74,18 @@ class Projectile extends MovingEntity {
 				const validDistance = ray.origin.squaredDistanceTo(this.position);
 
 				if (distanceToIntersection <= validDistance) {
+
+					// Create bullet hole decal for level hits
+					if (entity === world.level && world.rift && world.rift.decalSystem) {
+						const hitNormal = (this as any)._lastHitNormal;
+						if (hitNormal) {
+							// Convert Yuka Vector3 to Three.js Vector3
+							const threeHitPoint = new THREE.Vector3(intersectionPoint.x, intersectionPoint.y, intersectionPoint.z);
+							const threeNormal = new THREE.Vector3(hitNormal.x, hitNormal.y, hitNormal.z);
+							
+							world.rift.decalSystem.createDecal(threeHitPoint, threeNormal, SurfaceMaterial.ROCK);
+						}
+					}
 
 					// inform game entity about hit
 
