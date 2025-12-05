@@ -28,7 +28,8 @@ const SkyShader = {
 		'rayleigh': { value: 1 },
 		'mieCoefficient': { value: 0.005 },
 		'mieDirectionalG': { value: 0.8 },
-		'sunPosition': { value: new Vector3() }
+		'sunPosition': { value: new Vector3() },
+		'time': { value: 0 }
 	},
 
 	vertexShader: /* glsl */`
@@ -36,6 +37,7 @@ const SkyShader = {
 		uniform float rayleigh;
 		uniform float turbidity;
 		uniform float mieCoefficient;
+		uniform float time;
 
 		varying vec3 vWorldPosition;
 		varying vec3 vSunDirection;
@@ -115,8 +117,35 @@ const SkyShader = {
 
 		uniform float skyLuminance;
 		uniform float mieDirectionalG;
+		uniform float time;
 
 		const vec3 cameraPos = vec3( 0.0, 0.0, 0.0 );
+		
+		// Noise function for clouds
+		float hash(vec3 p) {
+			p = fract(p * 0.3183099 + 0.1);
+			p *= 17.0;
+			return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+		}
+		
+		float noise(vec3 x) {
+			vec3 i = floor(x);
+			vec3 f = fract(x);
+			f = f * f * (3.0 - 2.0 * f);
+			return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+						   mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+					   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+						   mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+		}
+		
+		float fbm(vec3 p) {
+			float f = 0.0;
+			f += 0.5000 * noise(p); p *= 2.02;
+			f += 0.2500 * noise(p); p *= 2.03;
+			f += 0.1250 * noise(p); p *= 2.01;
+			f += 0.0625 * noise(p);
+			return f / 0.9375;
+		}
 
 		// constants for atmospheric scattering
 		const float pi = 3.141592653589793238462643383279502884197169;
@@ -201,6 +230,56 @@ const SkyShader = {
 			vec3 color = curr * whiteScale;
 
 			vec3 retColor = pow( color, vec3( 1.0 / ( 1.2 + ( 1.2 * vSunfade ) ) ) );
+			
+			// Dark overcast storm atmosphere
+			retColor = retColor * 0.35; // Much darker
+			retColor = mix(retColor, vec3(0.35, 0.40, 0.44), 0.5); // Gray-blue overcast tone
+			
+			// Add depth gradient (darker at horizon)
+			vec3 viewDir = normalize(vWorldPosition - cameraPos);
+			float horizonFade = abs(viewDir.y);
+			retColor = mix(retColor * 0.7, retColor, horizonFade);
+			
+			// Animated volumetric clouds - DRAMATIC STORM
+			vec3 cloudPos = viewDir * 4.0 + vec3(time * 0.03, time * 0.01, time * 0.025);
+			float cloudDensity = fbm(cloudPos * 1.2);
+			
+			// Add second layer for depth
+			vec3 cloudPos2 = viewDir * 6.0 + vec3(time * 0.02, -time * 0.008, time * 0.018);
+			float cloudDensity2 = fbm(cloudPos2 * 0.9);
+			
+			// Combine layers with more prominence
+			cloudDensity = mix(cloudDensity, cloudDensity2, 0.5);
+			cloudDensity = smoothstep(0.2, 0.75, cloudDensity); // Lower threshold for more visible clouds
+			
+			// More visible storm clouds with better contrast
+			vec3 cloudColor = mix(
+				vec3(0.22, 0.25, 0.30), // Dark but visible clouds
+				vec3(0.45, 0.50, 0.58), // Much lighter cloud edges for contrast
+				cloudDensity * 0.8 + 0.2
+			);
+			
+			// Heavy cloud coverage throughout
+			float cloudAmount = mix(0.98, 0.75, horizonFade * horizonFade);
+			retColor = mix(retColor, cloudColor, cloudDensity * cloudAmount * 1.2); // Stronger cloud blend
+			
+			// DRAMATIC LIGHTNING - multiple intense flicker patterns
+			float lightning1 = noise(vec3(time * 4.0, 0.0, 0.0));
+			float lightning2 = noise(vec3(time * 6.0, 10.0, 0.0));
+			float lightning3 = noise(vec3(time * 8.0, 20.0, 0.0));
+			
+			// Create intense lightning strikes (more frequent)
+			float isLightning = step(0.90, lightning1) * step(0.88, lightning2); // More frequent
+			float lightningIntensity = isLightning * (0.7 + lightning3 * 0.3);
+			
+			// Add branching lightning across sky
+			float lightningPos = fract(time * 0.15);
+			float lightningBranch = abs(sin(viewDir.x * 8.0 + time * 2.0)) * 0.5 + 0.5;
+			float lightningArea = smoothstep(0.2, 0.6, abs(viewDir.x - lightningPos * 2.0 + 1.0));
+			
+			// VERY bright blue-white lightning glow
+			vec3 lightningColor = vec3(1.2, 1.4, 1.6) * lightningIntensity * (1.0 + lightningBranch * 0.5);
+			retColor += lightningColor * cloudDensity * (1.2 - lightningArea * 0.5);
 
 			gl_FragColor = vec4( retColor, 1.0 );
 

@@ -438,14 +438,21 @@ export class RIFTIntegration {
    * @param damageAmount Amount of damage taken
    * @param maxHealth Player's max health
    * @param directionAngle Optional angle to attacker in degrees
+   * @param postProcessing Optional post-processing system for vignette pulse
    */
-  public applyDamageEffects(damageAmount: number, maxHealth: number, directionAngle?: number): void {
+  public applyDamageEffects(damageAmount: number, maxHealth: number, directionAngle?: number, postProcessing?: any): void {
     // Screen shake based on damage
     const damagePercent = damageAmount / maxHealth;
     this.screenEffects.addDamageShake(damagePercent);
     
     // HUD vignette effect
     this.hudManager.showDamageVignette(damageAmount, maxHealth, directionAngle);
+    
+    // Post-processing vignette pulse for extra impact
+    if (postProcessing) {
+      const intensity = 0.5 + damagePercent * 0.3; // 0.5 to 0.8 based on damage
+      postProcessing.pulseVignette(intensity, 0.4);
+    }
     
     // Directional damage indicator
     if (directionAngle !== undefined) {

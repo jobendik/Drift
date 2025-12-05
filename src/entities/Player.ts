@@ -894,7 +894,7 @@ class Player extends MovingEntity {
 				if (this.world.rift) {
 					const angle = this.computeAngleToAttacker(telegram.data.direction);
 					const angleDegrees = (angle * 180) / Math.PI;
-					this.world.rift.applyDamageEffects(telegram.data.damage, this.maxHealth, angleDegrees);
+					this.world.rift.applyDamageEffects(telegram.data.damage, this.maxHealth, angleDegrees, this.world.postProcessing);
 				}
 
 				// logging

@@ -1,6 +1,6 @@
-import { LoadingManager, AnimationLoader, AudioLoader, TextureLoader, Mesh, AnimationClip, Texture } from 'three';
+import { LoadingManager, AnimationLoader, AudioLoader, TextureLoader, Mesh, AnimationClip, Texture, ShaderMaterial, Color, RepeatWrapping, SRGBColorSpace } from 'three';
 import { Sprite, SpriteMaterial, DoubleSide, AudioListener, PositionalAudio } from 'three';
-import { LineSegments, LineBasicMaterial, MeshBasicMaterial, MeshStandardMaterial, BufferGeometry, Vector3, PlaneGeometry, BufferAttribute } from 'three';
+import { LineSegments, LineBasicMaterial, MeshBasicMaterial, BufferGeometry, Vector3, PlaneGeometry } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { NavMeshLoader, CostTable } from 'yuka';
 import { CONFIG } from './Config';
@@ -68,20 +68,349 @@ class AssetManager {
 		this._loadAnimations();
 		this._loadAudios();
 		this._loadConfigs();
+		this._loadTextures();  // Load textures BEFORE models so they're available
 		this._loadModels();
-		this._loadTextures();
 		this._loadNavMesh();
 
 		return new Promise((resolve) => {
 
 			this.loadingManager.onLoad = () => {
-
+				// Apply level material after ALL assets (including textures) are loaded
+				this._applyLevelMaterial();
 				resolve(undefined);
 
 			};
 
 		});
 
+	}
+	
+	/**
+	* Applies the triplanar textured material to the level mesh.
+	* Called after all assets are loaded to ensure textures are available.
+	*/
+	_applyLevelMaterial() {
+		const level = this.models.get('level');
+		if (!level) return;
+		
+		const mesh = level.getObjectByName('level') as Mesh;
+		if (!mesh || !mesh.material) return;
+		
+		const oldMaterial = mesh.material as MeshBasicMaterial;
+		
+		// Get floor textures (metal plates)
+		const floorColor = this.textures.get('floor_color');
+		const floorNormal = this.textures.get('floor_normal');
+		const floorRoughness = this.textures.get('floor_roughness');
+		const floorAO = this.textures.get('floor_ao');
+		const floorMetallic = this.textures.get('floor_metallic');
+		
+		// Get 2 brick wall texture variations (within WebGL texture unit limit)
+		const wallColors: any[] = [];
+		const wallNormals: any[] = [];
+		const wallRoughnesses: any[] = [];
+		const wallAOs: any[] = [];
+		
+		for (let i = 1; i <= 2; i++) {
+			wallColors.push(this.textures.get(`wall_color_${i}`));
+			wallNormals.push(this.textures.get(`wall_normal_${i}`));
+			wallRoughnesses.push(this.textures.get(`wall_roughness_${i}`));
+			wallAOs.push(this.textures.get(`wall_ao_${i}`));
+		}
+		
+		// Check if all textures loaded
+		if (!floorColor || !wallColors[0]) {
+			console.warn('Level textures not loaded, using default material');
+			return;
+		}
+		
+		// AAA-quality triplanar PBR shader with 2 brick wall variations
+		const triplanarShader = new ShaderMaterial({
+			uniforms: {
+				// Floor textures (metal plates) - 5 textures
+				floorColorMap: { value: floorColor },
+				floorNormalMap: { value: floorNormal },
+				floorRoughnessMap: { value: floorRoughness },
+				floorAOMap: { value: floorAO },
+				floorMetallicMap: { value: floorMetallic },
+				// Wall texture variations - 6 textures (2 brick variations x 3 maps each)
+				wallColorMap1: { value: wallColors[0] },
+				wallNormalMap1: { value: wallNormals[0] },
+				wallRoughnessMap1: { value: wallRoughnesses[0] },
+				wallAOMap1: { value: wallAOs[0] },
+				wallColorMap2: { value: wallColors[1] },
+				wallNormalMap2: { value: wallNormals[1] },
+				wallRoughnessMap2: { value: wallRoughnesses[1] },
+				wallAOMap2: { value: wallAOs[1] },
+				// Lighting - stylized arena style
+				lightDir: { value: new Vector3(0.3, 0.9, 0.3).normalize() },
+				lightColor: { value: new Color(1.2, 1.15, 1.1) },
+				ambientColor: { value: new Color(0.25, 0.28, 0.32) },  // Brighter for stylized look
+				// Texture scale
+				floorScale: { value: 0.15 },
+				wallScale: { value: 0.08 },  // Very subtle texture detail
+				// Wall variation parameters
+				variationScale: { value: 0.02 }
+			},
+			vertexShader: `
+				varying vec3 vWorldPosition;
+				varying vec3 vWorldNormal;
+				varying vec3 vViewDir;
+				
+				void main() {
+					vec4 worldPos = modelMatrix * vec4(position, 1.0);
+					vWorldPosition = worldPos.xyz;
+					vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+					vViewDir = normalize(cameraPosition - worldPos.xyz);
+					gl_Position = projectionMatrix * viewMatrix * worldPos;
+				}
+			`,
+			fragmentShader: `
+				uniform sampler2D floorColorMap;
+				uniform sampler2D floorNormalMap;
+				uniform sampler2D floorRoughnessMap;
+				uniform sampler2D floorAOMap;
+				uniform sampler2D floorMetallicMap;
+				
+				uniform sampler2D wallColorMap1;
+				uniform sampler2D wallNormalMap1;
+				uniform sampler2D wallRoughnessMap1;
+				uniform sampler2D wallAOMap1;
+				uniform sampler2D wallColorMap2;
+				uniform sampler2D wallNormalMap2;
+				uniform sampler2D wallRoughnessMap2;
+				uniform sampler2D wallAOMap2;
+				
+				uniform vec3 lightDir;
+				uniform vec3 lightColor;
+				uniform vec3 ambientColor;
+				uniform float floorScale;
+				uniform float wallScale;
+				uniform float variationScale;
+				
+				varying vec3 vWorldPosition;
+				varying vec3 vWorldNormal;
+				varying vec3 vViewDir;
+				
+				const float PI = 3.14159265359;
+				
+				// Pseudo-random hash for variation selection
+				float hash(vec2 p) {
+					return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+				}
+				
+				// Smooth noise for blending
+				float noise(vec2 p) {
+					vec2 i = floor(p);
+					vec2 f = fract(p);
+					f = f * f * (3.0 - 2.0 * f);
+					float a = hash(i);
+					float b = hash(i + vec2(1.0, 0.0));
+					float c = hash(i + vec2(0.0, 1.0));
+					float d = hash(i + vec2(1.0, 1.0));
+					return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+				}
+				
+				// Triplanar blend with sharp transitions
+				vec3 getTriplanarBlend(vec3 normal) {
+					vec3 blend = abs(normal);
+					blend = pow(blend, vec3(4.0));
+					blend = blend / (blend.x + blend.y + blend.z + 0.0001);
+					return blend;
+				}
+				
+				// Sample texture with triplanar projection
+				vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 blend, float scale) {
+					vec4 xProj = texture2D(tex, pos.zy * scale);
+					vec4 yProj = texture2D(tex, pos.xz * scale);
+					vec4 zProj = texture2D(tex, pos.xy * scale);
+					return xProj * blend.x + yProj * blend.y + zProj * blend.z;
+				}
+				
+				// Triplanar normal mapping
+				vec3 triplanarNormal(sampler2D normalMap, vec3 pos, vec3 normal, vec3 blend, float scale) {
+					vec3 tnormalX = texture2D(normalMap, pos.zy * scale).rgb * 2.0 - 1.0;
+					vec3 tnormalY = texture2D(normalMap, pos.xz * scale).rgb * 2.0 - 1.0;
+					vec3 tnormalZ = texture2D(normalMap, pos.xy * scale).rgb * 2.0 - 1.0;
+					
+					vec3 normalX = vec3(tnormalX.xy + normal.zy, abs(tnormalX.z) * normal.x);
+					vec3 normalY = vec3(tnormalY.xy + normal.xz, abs(tnormalY.z) * normal.y);
+					vec3 normalZ = vec3(tnormalZ.xy + normal.xy, abs(tnormalZ.z) * normal.z);
+					
+					return normalize(normalX.zyx * blend.x + normalY.xzy * blend.y + normalZ.xyz * blend.z);
+				}
+				
+				// GGX Distribution
+				float distributionGGX(float NdotH, float roughness) {
+					float a = roughness * roughness;
+					float a2 = a * a;
+					float NdotH2 = NdotH * NdotH;
+					float denom = NdotH2 * (a2 - 1.0) + 1.0;
+					return a2 / (PI * denom * denom);
+				}
+				
+				// Geometry function
+				float geometrySchlickGGX(float NdotV, float roughness) {
+					float r = roughness + 1.0;
+					float k = (r * r) / 8.0;
+					return NdotV / (NdotV * (1.0 - k) + k);
+				}
+				
+				float geometrySmith(float NdotV, float NdotL, float roughness) {
+					return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
+				}
+				
+				// Fresnel
+				vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+					return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+				}
+				
+				void main() {
+					vec3 normal = normalize(vWorldNormal);
+					vec3 viewDir = normalize(vViewDir);
+					vec3 pos = vWorldPosition;
+					vec3 blend = getTriplanarBlend(normal);
+					
+					// Determine surface type
+					float isFloor = smoothstep(0.7, 0.9, normal.y);
+					float isCeiling = smoothstep(0.7, 0.9, -normal.y);
+					float isWall = 1.0 - isFloor - isCeiling;
+					isWall = max(isWall, 0.0);
+					
+					// STYLIZED FLOOR - arena style with grid pattern
+					vec3 floorTexture = triplanarSample(floorColorMap, pos, blend, floorScale).rgb;
+					vec3 floorNormalTex = triplanarNormal(floorNormalMap, pos, normal, blend, floorScale);
+					
+					// Grid pattern for visual interest and orientation
+					vec2 floorGrid = abs(fract(pos.xz * 0.5) - 0.5);
+					float gridLine = min(floorGrid.x, floorGrid.y);
+					float grid = smoothstep(0.015, 0.035, gridLine);
+					
+					// Base floor color - neutral warm tone
+					vec3 floorBaseColor = vec3(0.48, 0.46, 0.44);
+					vec3 floorAlbedo = mix(floorBaseColor * 0.55, floorBaseColor, grid);
+					
+					// Add subtle diagonal wear pattern
+					float wearPattern = noise(pos.xz * 0.1 + vec2(pos.x - pos.z) * 0.05);
+					floorAlbedo = mix(floorAlbedo, floorAlbedo * 0.92, wearPattern * 0.15);
+					floorAlbedo = mix(floorAlbedo, floorAlbedo * floorTexture, 0.25);
+					
+					float floorRough = 0.7;
+					float floorAo = 1.0;
+					float floorMetal = 0.0;
+					vec3 floorN = normalize(mix(normal, floorNormalTex, 0.3));
+					
+					// STYLIZED ARENA WALLS - designed for 10-15m height
+					
+					// Base color with vertical gradient for height perception
+					float heightGradient = smoothstep(-5.0, 10.0, pos.y);
+					vec3 wallBaseColor = mix(vec3(0.50, 0.53, 0.58), vec3(0.62, 0.66, 0.72), heightGradient);
+					
+					// Add horizontal panels/stripes to emphasize scale
+					float panelPattern = fract(pos.y * 0.15);
+					float panelLine = smoothstep(0.92, 0.98, panelPattern);
+					vec3 panelColor = mix(wallBaseColor, wallBaseColor * 0.75, panelLine);
+					
+					// Vertical accent lines for visual interest
+					vec2 wallCoord = vec2(pos.x + pos.z, pos.y);
+					float vertLine = abs(fract(wallCoord.x * 0.08) - 0.5);
+					float vertAccent = smoothstep(0.48, 0.5, vertLine);
+					panelColor = mix(panelColor * 0.88, panelColor, vertAccent);
+					
+					// Subtle color tint variation for visual interest
+					float colorVar = noise(pos.xz * 0.03);
+					panelColor = mix(panelColor, panelColor * vec3(0.98, 1.0, 1.02), colorVar * 0.1);
+					
+					// Subtle texture detail
+					vec3 textureDetail = triplanarSample(wallColorMap1, pos, blend, wallScale).rgb;
+					vec3 wallAlbedo = mix(panelColor, panelColor * textureDetail, 0.1);
+					
+					// Simplified normal
+					vec3 wallN = normal;
+					vec3 textureN = triplanarNormal(wallNormalMap1, pos, normal, blend, wallScale);
+					wallN = normalize(mix(wallN, textureN, 0.15));
+					
+					float wallRough = 0.6;
+					float wallAO = 1.0;
+					
+					// Ceiling uses floor texture darkened
+					vec3 ceilingAlbedo = floorAlbedo * 0.6;
+					vec3 ceilingN = floorN;
+					float ceilingRough = floorRough;
+					
+					// Combine materials based on surface type
+					vec3 albedo = wallAlbedo * isWall + floorAlbedo * isFloor + ceilingAlbedo * isCeiling;
+					float roughness = wallRough * isWall + floorRough * isFloor + ceilingRough * isCeiling;
+					float ao = wallAO * isWall + floorAo * isFloor + floorAo * isCeiling;
+					float metallic = 0.0 * isWall + floorMetal * isFloor + floorMetal * 0.8 * isCeiling;
+					vec3 N = normalize(wallN * isWall + floorN * isFloor + ceilingN * isCeiling);
+					
+					// Clamp roughness
+					roughness = clamp(roughness, 0.05, 1.0);
+					
+					// PBR calculations
+					vec3 V = viewDir;
+					vec3 L = normalize(lightDir);
+					vec3 H = normalize(V + L);
+					
+					float NdotL = max(dot(N, L), 0.0);
+					float NdotV = max(dot(N, V), 0.001);
+					float NdotH = max(dot(N, H), 0.0);
+					float HdotV = max(dot(H, V), 0.0);
+					
+					vec3 F0 = vec3(0.04);
+					F0 = mix(F0, albedo, metallic);
+					
+					float D = distributionGGX(NdotH, roughness);
+					float G = geometrySmith(NdotV, NdotL, roughness);
+					vec3 F = fresnelSchlick(HdotV, F0);
+					
+					vec3 kS = F;
+					vec3 kD = (1.0 - kS) * (1.0 - metallic);
+					
+					vec3 specular = (D * G * F) / (4.0 * NdotV * NdotL + 0.0001);
+					vec3 diffuse = kD * albedo / PI;
+					
+					// Direct lighting - balanced for competitive visibility
+					vec3 Lo = (diffuse + specular) * lightColor * NdotL * 2.8;
+					
+					// Ambient with hemisphere - good contrast without being too dark
+					float hemi = N.y * 0.5 + 0.5;
+					vec3 ambientLo = albedo * mix(ambientColor * 0.5, ambientColor * 1.4, hemi) * ao;
+					
+					// Fill light - slightly warmer to complement cool walls
+					vec3 fillDir = normalize(vec3(-0.3, -0.5, -0.4));
+					float fillNdotL = max(dot(N, -fillDir), 0.0);
+					vec3 fillLight = albedo * vec3(0.12, 0.13, 0.16) * fillNdotL * 0.7;
+					
+					// Rim light for geometry definition
+					float rimAmount = pow(1.0 - NdotV, 2.5);
+					vec3 rimLight = vec3(0.25, 0.28, 0.32) * rimAmount * 0.25;
+					
+					vec3 finalColor = Lo + ambientLo + fillLight + rimLight;
+					
+					// Atmospheric fog matching overcast sky
+					float dist = length(pos - cameraPosition);
+					float fog = 1.0 - exp(-dist * 0.003);
+					vec3 fogColor = vec3(0.42, 0.46, 0.50); // Dark overcast atmosphere
+					finalColor = mix(finalColor, fogColor, fog * 0.4);
+					
+					// ACES tone mapping - optimized for competitive visibility
+					finalColor = finalColor * 0.75;
+					finalColor = (finalColor * (2.51 * finalColor + 0.03)) / (finalColor * (2.43 * finalColor + 0.59) + 0.14);
+					
+					// Gamma
+					finalColor = pow(finalColor, vec3(1.0/2.2));
+					
+					gl_FragColor = vec4(finalColor, 1.0);
+				}
+			`
+		});
+		
+		mesh.castShadow = true;
+		mesh.receiveShadow = true;
+		mesh.material = triplanarShader;
+		oldMaterial.dispose();
 	}
 
 
@@ -371,100 +700,9 @@ class AssetManager {
 
 			});
 
-		// Apply enhanced gray gradient material with procedural detail
+			models.set('level', renderComponent);
 
-		const mesh = renderComponent.getObjectByName('level') as Mesh;
-		if (mesh && mesh.material) {
-			const oldMaterial = mesh.material as MeshBasicMaterial;
-			
-			// Simple pseudo-random function for noise
-			const hash = (x: number, y: number, z: number) => {
-				const p = Math.sin(x * 12.9898 + y * 78.233 + z * 45.164) * 43758.5453;
-				return p - Math.floor(p);
-			};
-			
-			// Add vertex colors with enhanced gradient and detail
-			const geometry = mesh.geometry;
-			
-			// Always regenerate colors (remove old if exists)
-			const positions = geometry.attributes.position;
-			const normals = geometry.attributes.normal;
-			const colors = new Float32Array(positions.count * 3);
-			
-			// Find bounds for gradient
-			let minY = Infinity, maxY = -Infinity;
-			let minX = Infinity, maxX = -Infinity;
-			let minZ = Infinity, maxZ = -Infinity;
-			
-			for (let i = 0; i < positions.count; i++) {
-				const x = positions.getX(i);
-				const y = positions.getY(i);
-				const z = positions.getZ(i);
-				if (y < minY) minY = y;
-				if (y > maxY) maxY = y;
-				if (x < minX) minX = x;
-				if (x > maxX) maxX = x;
-				if (z < minZ) minZ = z;
-				if (z > maxZ) maxZ = z;
-			}
-			
-			const rangeY = maxY - minY;
-			
-			// Apply enhanced gradient with multiple factors
-			for (let i = 0; i < positions.count; i++) {
-				const x = positions.getX(i);
-				const y = positions.getY(i);
-				const z = positions.getZ(i);
-				
-				// Height-based gradient (0.2 to 0.8)
-				const normalizedY = (y - minY) / rangeY;
-				let grayValue = 0.2 + normalizedY * 0.6;
-				
-				// Add procedural noise for texture detail (subtle)
-				const noise = hash(x * 0.1, y * 0.1, z * 0.1);
-				grayValue += (noise - 0.5) * 0.08;
-				
-				// Add ambient occlusion-like darkening near edges/corners
-				if (normals) {
-					const ny = normals.getY(i);
-					
-					// Darken based on normal orientation (occluded areas)
-					const occlusion = (ny + 1) * 0.5; // Up-facing surfaces are lighter
-					grayValue *= 0.7 + occlusion * 0.3;
-				}
-				
-				// Add subtle variation based on position
-				const posNoise = hash(x * 0.05, y * 0.05, z * 0.05);
-				grayValue += (posNoise - 0.5) * 0.05;
-				
-				// Clamp values
-				grayValue = Math.max(0.15, Math.min(0.85, grayValue));
-				
-				// Slight color tint for more interesting look
-				colors[i * 3] = grayValue * 0.98;     // R (slightly less red)
-				colors[i * 3 + 1] = grayValue;        // G
-				colors[i * 3 + 2] = grayValue * 1.02; // B (slightly more blue)
-			}
-			
-			geometry.setAttribute('color', new BufferAttribute(colors, 3));
-			
-			// Use MeshStandardMaterial for PBR rendering
-			const newMaterial = new MeshStandardMaterial({
-				vertexColors: true,
-				color: 0xffffff,
-				roughness: 0.9,      // Slightly rough for concrete-like appearance
-				metalness: 0.0,      // Non-metallic
-				flatShading: false,  // Smooth shading
-				envMapIntensity: 0.3 // Subtle environment reflections
-			});
-			
-			mesh.material = newMaterial;
-			oldMaterial.dispose();
-		}
-
-		models.set('level', renderComponent);
-
-	});
+		});
 
 	// blaster, high poly
 
@@ -634,6 +872,56 @@ class AssetManager {
 
 		const textureLoader = this.textureLoader;
 
+		// === LEVEL TEXTURES ===
+		// Concrete floor - matching style with walls
+		const floorPath = './assets/textures/level/Concrete043B_1K-JPG/Concrete043B_1K-JPG';
+		const floorColor = textureLoader.load(`${floorPath}_Color.jpg`);
+		floorColor.wrapS = floorColor.wrapT = RepeatWrapping;
+		floorColor.colorSpace = SRGBColorSpace;
+		this.textures.set('floor_color', floorColor);
+
+		const floorNormal = textureLoader.load(`${floorPath}_NormalGL.jpg`);
+		floorNormal.wrapS = floorNormal.wrapT = RepeatWrapping;
+		this.textures.set('floor_normal', floorNormal);
+
+		const floorRoughness = textureLoader.load(`${floorPath}_Roughness.jpg`);
+		floorRoughness.wrapS = floorRoughness.wrapT = RepeatWrapping;
+		this.textures.set('floor_roughness', floorRoughness);
+
+		const floorAO = textureLoader.load(`${floorPath}_AmbientOcclusion.jpg`);
+		floorAO.wrapS = floorAO.wrapT = RepeatWrapping;
+		this.textures.set('floor_ao', floorAO);
+
+		const floorMetallic = textureLoader.load(`${floorPath}_Metalness.jpg`);
+		floorMetallic.wrapS = floorMetallic.wrapT = RepeatWrapping;
+		this.textures.set('floor_metallic', floorMetallic);
+
+		// Clean concrete walls - minimal FPS aesthetic
+		const concretePath = './assets/textures/level/Concrete042A_1K-JPG/Concrete042A_1K-JPG';
+		
+		const wallColor1 = textureLoader.load(`${concretePath}_Color.jpg`);
+		wallColor1.wrapS = wallColor1.wrapT = RepeatWrapping;
+		wallColor1.colorSpace = SRGBColorSpace;
+		this.textures.set('wall_color_1', wallColor1);
+		this.textures.set('wall_color_2', wallColor1); // Same texture for both variations
+
+		const wallNormal1 = textureLoader.load(`${concretePath}_NormalGL.jpg`);
+		wallNormal1.wrapS = wallNormal1.wrapT = RepeatWrapping;
+		this.textures.set('wall_normal_1', wallNormal1);
+		this.textures.set('wall_normal_2', wallNormal1);
+
+		// Concrete uses metalness as roughness approximation
+		const wallRoughness1 = textureLoader.load(`${concretePath}_Metalness.jpg`);
+		wallRoughness1.wrapS = wallRoughness1.wrapT = RepeatWrapping;
+		this.textures.set('wall_roughness_1', wallRoughness1);
+		this.textures.set('wall_roughness_2', wallRoughness1);
+
+		const wallAO1 = textureLoader.load(`${concretePath}_AmbientOcclusion.jpg`);
+		wallAO1.wrapS = wallAO1.wrapT = RepeatWrapping;
+		this.textures.set('wall_ao_1', wallAO1);
+		this.textures.set('wall_ao_2', wallAO1);
+
+		// UI textures
 		let texture = textureLoader.load('./assets/textures/ui/crosshairs.png');
 		texture.matrixAutoUpdate = false;
 		this.textures.set('crosshairs', texture);

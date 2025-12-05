@@ -1,7 +1,9 @@
 import { EntityManager, Time, MeshGeometry, Vector3, CellSpacePartitioning } from 'yuka';
-import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3, Mesh, Box3, BoxGeometry, MeshBasicMaterial } from 'three';
-import { HemisphereLight, DirectionalLight } from 'three';
+import * as THREE from 'three';
+import { WebGLRenderer, Scene, PerspectiveCamera, Color, AnimationMixer, Object3D, SkeletonHelper, SRGBColorSpace, ShaderMaterial, Vector3 as ThreeVector3, Mesh, Box3, BoxGeometry, MeshBasicMaterial, Fog, FogExp2 } from 'three';
+import { HemisphereLight, DirectionalLight, PointLight, SpotLight } from 'three';
 import { AxesHelper } from 'three';
+import { PostProcessingSystem } from '../systems/PostProcessingSystem';
 
 import { AssetManager } from './AssetManager';
 import { SpawningManager } from './SpawningManager';
@@ -16,6 +18,7 @@ import { Bullet } from '../weapons/Bullet';
 import { PathPlanner } from '../utils/PathPlanner';
 import { Sky } from '../effects/Sky';
 import { CONFIG } from './Config';
+import { Points, BufferGeometry, Float32BufferAttribute, PointsMaterial, AdditiveBlending } from 'three';
 
 // RIFT Integration imports
 import { RIFTIntegration } from '../rift-integration';
@@ -35,6 +38,7 @@ class World {
 
 	// RIFT Integration systems
 	public rift!: RIFTIntegration;
+	public postProcessing!: PostProcessingSystem;
 	public gameModeManager!: GameModeManager;
 	public networkManager!: NetworkManager;
 	public lobbyManager!: LobbyManager;
@@ -78,6 +82,12 @@ class World {
 	public scene!: Scene;
 	public fpsControls!: FirstPersonControls;
 	public useFPSControls: boolean;
+	
+	// Weather effects
+	private rainParticles!: Points;
+	private lightningFlashLight!: PointLight;
+	private lightningTime: number = 0;
+	private nextLightningTime: number = 5 + Math.random() * 10;
 
 	public player!: Player;
 	public level!: Level;
@@ -375,15 +385,47 @@ class World {
 
 		}
 
-		// lights
+		// === DRAMATIC ARENA LIGHTING ===
 
-		const hemiLight = new HemisphereLight(0xffffff, 0x444444, 0.4);
+		// Atmospheric fog for depth
+		this.scene.fog = new FogExp2(0x4a5560, 0.004);
+		this.scene.background = new Color(0x3a4550); // Dark stormy sky
+
+		// Hemisphere light - overcast atmosphere
+		const hemiLight = new HemisphereLight(0x8090a0, 0x606870, 0.5);
 		hemiLight.position.set(0, 100, 0);
 		this.scene.add(hemiLight);
 
-		const dirLight = new DirectionalLight(0xffffff, 0.8);
-		dirLight.position.set(- 700, 1000, - 750);
+		// Main directional light (diffused through clouds) with shadows
+		const dirLight = new DirectionalLight(0xd0e0f0, 1.8); // Brighter for contrast
+		dirLight.position.set(-700, 1000, -750);
+		dirLight.castShadow = true;
+		dirLight.shadow.mapSize.width = 2048;
+		dirLight.shadow.mapSize.height = 2048;
+		dirLight.shadow.camera.near = 100;
+		dirLight.shadow.camera.far = 2500;
+		dirLight.shadow.camera.left = -500;
+		dirLight.shadow.camera.right = 500;
+		dirLight.shadow.camera.top = 500;
+		dirLight.shadow.camera.bottom = -500;
+		dirLight.shadow.bias = -0.0005;
 		this.scene.add(dirLight);
+
+		// Dramatic ambient lighting for gameplay visibility
+		// Cool backlight for atmosphere
+		const backLight = new PointLight(0x8090b0, 1.8, 180, 1.8);
+		backLight.position.set(-40, 12, -30);
+		this.scene.add(backLight);
+
+		// Warm contrast light
+		const warmAccent = new PointLight(0xc09070, 1.2, 150, 2.0);
+		warmAccent.position.set(40, 12, 30);
+		this.scene.add(warmAccent);
+
+		// Strong ambient fill for competitive visibility
+		const ambientFill = new PointLight(0x90a0b0, 1.4, 200, 2.0);
+		ambientFill.position.set(0, 15, 0);
+		this.scene.add(ambientFill);
 
 		// sky
 
@@ -391,11 +433,18 @@ class World {
 		sky.scale.setScalar(1000);
 
 		const skyMaterial = sky.material as ShaderMaterial;
-		skyMaterial.uniforms.turbidity.value = 5;
-		skyMaterial.uniforms.rayleigh.value = 1.5;
-		skyMaterial.uniforms.sunPosition.value.set(- 700, 1000, - 750);
+		skyMaterial.uniforms.turbidity.value = 12; // Heavy overcast
+		skyMaterial.uniforms.rayleigh.value = 0.5; // Reduced scattering
+		skyMaterial.uniforms.skyLuminance.value = 0.4; // Darker sky
+		skyMaterial.uniforms.sunPosition.value.set(-700, 400, -750); // Lower sun position
+		
+		// Store sky reference for animation
+		(this as any).sky = sky;
 
 		this.scene.add(sky);
+		
+		// === WEATHER EFFECTS ===
+		this._initWeatherEffects();
 
 		// renderer
 
@@ -403,7 +452,10 @@ class World {
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.autoClear = false;
 		this.renderer.shadowMap.enabled = true;
+		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		this.renderer.outputColorSpace = SRGBColorSpace;
+		this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+		this.renderer.toneMappingExposure = 1.0;
 		document.body.appendChild(this.renderer.domElement);
 
 		// event listeners
@@ -412,6 +464,9 @@ class World {
 
 		// Initialize RIFT Integration systems
 		this._initRIFT();
+
+		// Initialize post-processing (after RIFT so scene is ready)
+		this.postProcessing = new PostProcessingSystem(this.renderer, this.scene, this.camera);
 
 		return this;
 
@@ -946,6 +1001,11 @@ class World {
 
 		this.renderer.setSize(width, height);
 		this.uiManager.setSize(width, height);
+		
+		// Update post-processing resolution
+		if (this.postProcessing) {
+			this.postProcessing.setSize(width, height);
+		}
 
 	}
 
@@ -987,10 +1047,18 @@ class World {
 
 		// Update RIFT systems
 		this._updateRIFT(delta);
+		
+		// Update weather effects
+		this._updateWeather(delta);
 
 		this.renderer.clear();
 
-		this.renderer.render(this.scene, this.camera);
+		// Use post-processing if available, otherwise direct render
+		if (this.postProcessing) {
+			this.postProcessing.render();
+		} else {
+			this.renderer.render(this.scene, this.camera);
+		}
 
 		this.uiManager.update(delta);
 
@@ -1115,6 +1183,117 @@ class World {
 		if (entity.children) {
 			for (const child of entity.children) {
 				this._syncRenderComponent(child);
+			}
+		}
+	}
+	
+	/**
+	* Initialize weather effects - rain and lightning
+	*/
+	private _initWeatherEffects(): void {
+		// Rain particles
+		const rainCount = 3000;
+		const rainGeometry = new THREE.BufferGeometry();
+		const rainPositions = new Float32Array(rainCount * 3);
+		const rainVelocities = new Float32Array(rainCount);
+		
+		for (let i = 0; i < rainCount; i++) {
+			// Spread rain around camera
+			rainPositions[i * 3] = (Math.random() - 0.5) * 200; // x
+			rainPositions[i * 3 + 1] = Math.random() * 80 - 10; // y (height)
+			rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 200; // z
+			rainVelocities[i] = 30 + Math.random() * 20; // fall speed
+		}
+		
+		rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+		rainGeometry.setAttribute('velocity', new THREE.BufferAttribute(rainVelocities, 1));
+		
+		const rainMaterial = new THREE.PointsMaterial({
+			color: 0x8899aa,
+			size: 0.15,
+			transparent: true,
+			opacity: 0.6,
+			blending: THREE.AdditiveBlending
+		});
+		
+		this.rainParticles = new THREE.Points(rainGeometry, rainMaterial);
+		this.scene.add(this.rainParticles);
+		
+		// Lightning flash light (starts off)
+		this.lightningFlashLight = new THREE.PointLight(0xccddff, 0, 400, 1.5); // Brighter color, wider range
+		this.lightningFlashLight.position.set(0, 100, 0);
+		this.lightningFlashLight.castShadow = false; // Don't cast shadows for performance
+		this.scene.add(this.lightningFlashLight);
+	}
+	
+	/**
+	* Update weather effects each frame
+	*/
+	private _updateWeather(delta: number): void {
+		// Animate sky clouds
+		const sky = (this as any).sky;
+		if (sky) {
+			const skyMaterial = sky.material as ShaderMaterial;
+			skyMaterial.uniforms.time.value += delta;
+		}
+		
+		// Update rain
+		const positions = this.rainParticles.geometry.attributes.position.array as Float32Array;
+		const velocities = this.rainParticles.geometry.attributes.velocity.array as Float32Array;
+		
+		for (let i = 0; i < positions.length / 3; i++) {
+			// Move rain down
+			positions[i * 3 + 1] -= velocities[i] * delta;
+			
+			// Reset rain when it hits ground
+			if (positions[i * 3 + 1] < -5) {
+				positions[i * 3 + 1] = 70 + Math.random() * 10;
+				positions[i * 3] = this.camera.position.x + (Math.random() - 0.5) * 200;
+				positions[i * 3 + 2] = this.camera.position.z + (Math.random() - 0.5) * 200;
+			}
+		}
+		
+		this.rainParticles.geometry.attributes.position.needsUpdate = true;
+		
+		// Update lightning
+		this.lightningTime += delta;
+		
+		if (this.lightningTime >= this.nextLightningTime) {
+			// Trigger INTENSE lightning flash
+			this.lightningFlashLight.intensity = 80 + Math.random() * 40; // MUCH brighter (80-120)
+			this.lightningFlashLight.position.set(
+				(Math.random() - 0.5) * 120, // Closer to player
+				80 + Math.random() * 30, // Higher up
+				(Math.random() - 0.5) * 120
+			);
+			
+			// Sometimes create double-strike effect
+			if (Math.random() > 0.7) {
+				setTimeout(() => {
+					this.lightningFlashLight.intensity = 50 + Math.random() * 30;
+				}, 100 + Math.random() * 100);
+			}
+			
+			// Brief screen flash effect using vignette
+			if (this.rift?.screenEffects) {
+				this.rift.screenEffects.addVignette(0.3); // Quick bright flash
+			}
+			
+			// Schedule next lightning - more frequent
+			this.lightningTime = 0;
+			this.nextLightningTime = 2 + Math.random() * 5; // 2-7 seconds instead of 3-11
+		} else if (this.lightningFlashLight.intensity > 0) {
+			// Fade out lightning with realistic flicker
+			const fadeSpeed = 12 + Math.random() * 3;
+			this.lightningFlashLight.intensity *= Math.max(0, 1 - delta * fadeSpeed);
+			
+			// Add flicker before complete fade
+			if (this.lightningFlashLight.intensity < 5 && Math.random() > 0.9) {
+				this.lightningFlashLight.intensity += 3;
+			}
+			
+			if (this.lightningFlashLight.intensity < 0.1) {
+				this.lightningFlashLight.intensity = 0;
 			}
 		}
 	}
